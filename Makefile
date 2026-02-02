@@ -1,7 +1,7 @@
 .PHONY: install download process label analyze figures test clean help
 
 # Default model for labeling
-MODEL ?= llama3.2:8b
+MODEL ?= llama3.2:latest
 BATCH_SIZE ?= 100
 
 help:

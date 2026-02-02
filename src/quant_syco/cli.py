@@ -166,6 +166,40 @@ def validate():
             console.print(f"  Within-1 Agreement: {irr['within_1_agreement']:.1%}")
 
 
+@app.command("test-ollama")
+def test_ollama(
+    model: str = typer.Option(DEFAULT_OLLAMA_MODEL, "--model", "-m", help="Ollama model to test"),
+):
+    """Test Ollama connection and labeling."""
+    from .labeling.ollama_judge import label_single_response
+
+    console.print(f"[blue]Testing Ollama connection with model: {model}[/blue]")
+
+    try:
+        result = label_single_response(
+            user_message="What is 2+2?",
+            assistant_response="Great question! The answer is 4.",
+            model=model,
+        )
+
+        if result.success:
+            console.print("[green]✓ Connection successful![/green]")
+            console.print(f"  Sycophancy: {result.sycophancy}/3")
+            console.print(f"  Politeness: {result.politeness}/3")
+            console.print(f"  Reasoning: {result.reasoning}")
+        else:
+            console.print(f"[red]✗ Labeling failed: {result.error}[/red]")
+            raise typer.Exit(1)
+
+    except Exception as e:
+        console.print(f"[red]✗ Connection failed: {e}[/red]")
+        console.print("\n[yellow]Troubleshooting:[/yellow]")
+        console.print("  1. Is Ollama running? Run: ollama serve")
+        console.print("  2. Is the model installed? Run: ollama list")
+        console.print(f"  3. Try pulling the model: ollama pull {model}")
+        raise typer.Exit(1)
+
+
 @app.command()
 def status():
     """Show project status and data availability."""

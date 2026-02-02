@@ -3,7 +3,8 @@
 from pathlib import Path
 
 # Project root (where pyproject.toml lives)
-PROJECT_ROOT = Path(__file__).parent.parent.parent.parent
+# config.py is at src/quant_syco/config.py, so 3 levels up to project root
+PROJECT_ROOT = Path(__file__).parent.parent.parent
 
 # Data directories
 DATA_DIR = PROJECT_ROOT / "data"
@@ -21,7 +22,7 @@ LMSYS_DATASET = "lmsys/chatbot_arena_conversations"
 LMSYS_SPLIT = "train"
 
 # Labeling configuration
-DEFAULT_OLLAMA_MODEL = "llama3.2:8b"
+DEFAULT_OLLAMA_MODEL = "llama3.2:latest"
 DEFAULT_BATCH_SIZE = 100
 CHECKPOINT_INTERVAL = 1000  # Save checkpoint every N samples
 

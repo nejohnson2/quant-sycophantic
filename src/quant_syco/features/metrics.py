@@ -45,10 +45,15 @@ def _normalize_messages(obj):
     Normalize conversation_a / conversation_b into list of dicts with keys: role, content.
     Handles:
       - list of dicts
+      - numpy arrays of dicts (from parquet)
       - JSON-encoded strings
     """
     if obj is None or (isinstance(obj, float) and math.isnan(obj)):
         return []
+
+    # Handle numpy arrays (common when loading from parquet)
+    if isinstance(obj, np.ndarray):
+        obj = obj.tolist()
 
     if isinstance(obj, str):
         s = obj.strip()

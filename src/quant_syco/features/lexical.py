@@ -28,7 +28,7 @@ SYCOPHANCY_PHRASES = {
     "validation_seeking": [
         r"\bdoes that help\?",
         r"\bis that what you were looking for\?",
-        r"\bdoes this make sense\?",
+        r"\bdoes (this|that) make sense\?",
         r"\bi hope (this|that) helps?\b",
         r"\blet me know if (you need|that helps)\b",
         r"\bfeel free to ask\b",
