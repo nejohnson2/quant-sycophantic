@@ -187,7 +187,10 @@ def run_winner_regression(
 
     # Exclude ties
     df_clean = df[df["winner"].isin(["model_a", "model_b"])].copy()
-    df_clean = df_clean.dropna(subset=[sycophancy_a_col, sycophancy_b_col])
+
+    # Drop rows with missing values in required columns
+    required_cols = [sycophancy_a_col, sycophancy_b_col] + control_cols
+    df_clean = df_clean.dropna(subset=required_cols)
 
     # Create outcome: 1 = A wins
     df_clean["a_wins"] = (df_clean["winner"] == "model_a").astype(int)
@@ -202,9 +205,9 @@ def run_winner_regression(
     else:
         predictors = ["syco_diff"] + control_cols
 
-    # Prepare X
+    # Prepare X - convert categoricals to dummies and ensure numeric types
     X = df_clean[predictors].copy()
-    X = pd.get_dummies(X, drop_first=True)
+    X = pd.get_dummies(X, drop_first=True, dtype=float)
     X = sm.add_constant(X)
 
     y = df_clean["a_wins"]
