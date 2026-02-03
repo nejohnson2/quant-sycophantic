@@ -84,4 +84,4 @@ paper/figures/*.pdf
 *.ps
 
 # LaTeX build output (regenerate with make paper)
-paper/main.pdf
+#paper/main.pdf
