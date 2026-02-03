@@ -1,4 +1,4 @@
-.PHONY: install download process label analyze figures notebooks test clean help
+.PHONY: install download process label analyze figures notebooks paper paper-clean test clean help
 
 # Default model for labeling
 MODEL ?= llama3.2:latest
@@ -18,6 +18,8 @@ help:
 	@echo "  make analyze        Run full analysis pipeline (CLI + all notebooks)"
 	@echo "  make notebooks      Run all analysis notebooks in sequence"
 	@echo "  make figures        Generate publication figures"
+	@echo "  make paper          Compile LaTeX paper (NeurIPS format)"
+	@echo "  make paper-clean    Clean LaTeX auxiliary files"
 	@echo "  make test           Run tests"
 	@echo "  make clean          Remove generated files"
 	@echo ""
@@ -103,3 +105,20 @@ lint:
 format:
 	ruff format src/ tests/
 	ruff check --fix src/ tests/
+
+# LaTeX paper compilation
+PAPER_DIR := paper
+
+paper:
+	@echo "Compiling paper with latexmk..."
+	cd $(PAPER_DIR) && latexmk -pdf -interaction=nonstopmode main.tex
+	@echo "Paper compiled: $(PAPER_DIR)/main.pdf"
+
+paper-watch:
+	@echo "Watching for changes (Ctrl+C to stop)..."
+	cd $(PAPER_DIR) && latexmk -pdf -pvc -interaction=nonstopmode main.tex
+
+paper-clean:
+	@echo "Cleaning LaTeX auxiliary files..."
+	cd $(PAPER_DIR) && latexmk -C
+	rm -f $(PAPER_DIR)/*.bbl $(PAPER_DIR)/*.run.xml $(PAPER_DIR)/*.synctex.gz

@@ -60,3 +60,28 @@ htmlcov/
 # Paper outputs (regenerate from notebooks)
 paper/figures/*.png
 paper/figures/*.pdf
+
+# LaTeX auxiliary files
+*.aux
+*.log
+*.out
+*.toc
+*.lof
+*.lot
+*.fls
+*.fdb_latexmk
+*.synctex.gz
+*.synctex(busy)
+*.bbl
+*.blg
+*.run.xml
+*.bcf
+*-blx.bib
+*.nav
+*.snm
+*.vrb
+*.dvi
+*.ps
+
+# LaTeX build output (regenerate with make paper)
+paper/main.pdf
