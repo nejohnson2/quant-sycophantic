@@ -22,6 +22,7 @@ dependencies = [
     "tqdm>=4.65",
     # Notebooks & visualization
     "jupyter>=1.0",
+    "nbconvert>=7.0",
     "matplotlib>=3.7",
     "seaborn>=0.12",
 ]
