@@ -5,6 +5,40 @@ import pandas as pd
 from scipy import stats
 
 
+def _kappa_from_arrays(r1: np.ndarray, r2: np.ndarray, weights: str) -> float:
+    """Compute a single kappa value without bootstrapping (no recursion)."""
+    categories = np.unique(np.concatenate([r1, r2]))
+    n_cat = len(categories)
+    if n_cat < 2:
+        return 1.0
+    n = len(r1)
+    cat_map = {c: i for i, c in enumerate(categories)}
+
+    confusion = np.zeros((n_cat, n_cat))
+    for i, j in zip(r1, r2):
+        confusion[cat_map[i], cat_map[j]] += 1
+    confusion /= n
+
+    sum_rows = confusion.sum(axis=1)
+    sum_cols = confusion.sum(axis=0)
+
+    if weights == "quadratic":
+        weight_mat = np.array(
+            [[(i - j) ** 2 for j in range(n_cat)] for i in range(n_cat)]
+        ) / ((n_cat - 1) ** 2)
+    else:
+        weight_mat = np.array(
+            [[abs(i - j) for j in range(n_cat)] for i in range(n_cat)]
+        ) / (n_cat - 1)
+
+    observed = np.sum(weight_mat * confusion)
+    expected = np.sum(weight_mat * np.outer(sum_rows, sum_cols))
+
+    if expected == 0:
+        return 1.0 if observed == 0 else 0.0
+    return float(1 - (observed / expected))
+
+
 def compute_weighted_kappa(
     rater1: np.ndarray,
     rater2: np.ndarray,
@@ -29,42 +63,8 @@ def compute_weighted_kappa(
     if len(r1) == 0:
         return {"kappa": np.nan, "n": 0, "interpretation": "No valid pairs"}
 
-    # Get unique categories
-    categories = np.unique(np.concatenate([r1, r2]))
-    n_cat = len(categories)
     n = len(r1)
-
-    # Build confusion matrix
-    cat_map = {c: i for i, c in enumerate(categories)}
-    confusion = np.zeros((n_cat, n_cat))
-    for i, j in zip(r1, r2):
-        confusion[cat_map[i], cat_map[j]] += 1
-
-    confusion /= n
-
-    # Marginals
-    sum_rows = confusion.sum(axis=1)
-    sum_cols = confusion.sum(axis=0)
-
-    # Weight matrix
-    if weights == "quadratic":
-        weight_mat = np.array(
-            [[(i - j) ** 2 for j in range(n_cat)] for i in range(n_cat)]
-        ) / ((n_cat - 1) ** 2)
-    else:  # linear
-        weight_mat = np.array(
-            [[abs(i - j) for j in range(n_cat)] for i in range(n_cat)]
-        ) / (n_cat - 1)
-
-    # Observed and expected disagreement
-    observed = np.sum(weight_mat * confusion)
-    expected = np.sum(weight_mat * np.outer(sum_rows, sum_cols))
-
-    # Kappa
-    if expected == 0:
-        kappa = 1.0 if observed == 0 else 0.0
-    else:
-        kappa = 1 - (observed / expected)
+    kappa = _kappa_from_arrays(r1, r2, weights)
 
     # Interpretation (Landis & Koch, 1977)
     if kappa < 0:
@@ -80,29 +80,18 @@ def compute_weighted_kappa(
     else:
         interpretation = "Almost Perfect"
 
-    # Bootstrap CI
+    # Bootstrap CI — calls the non-recursive helper, no recursion risk
     n_bootstrap = 1000
-    kappas = []
     indices = np.arange(n)
-
-    for _ in range(n_bootstrap):
-        idx = np.random.choice(indices, n, replace=True)
-        try:
-            k = compute_weighted_kappa(r1[idx].astype(float), r2[idx].astype(float), weights)
-            kappas.append(k["kappa"])
-        except Exception:
-            continue
-
-    if kappas:
-        ci_lower = np.percentile(kappas, 2.5)
-        ci_upper = np.percentile(kappas, 97.5)
-    else:
-        ci_lower = ci_upper = np.nan
+    kappas = [
+        _kappa_from_arrays(r1[idx], r2[idx], weights)
+        for idx in (np.random.choice(indices, n, replace=True) for _ in range(n_bootstrap))
+    ]
 
     return {
         "kappa": kappa,
-        "ci_lower": ci_lower,
-        "ci_upper": ci_upper,
+        "ci_lower": float(np.percentile(kappas, 2.5)),
+        "ci_upper": float(np.percentile(kappas, 97.5)),
         "n": n,
         "interpretation": interpretation,
         "weights": weights,

@@ -1,62 +1,185 @@
-% Bibliography for Sycophancy Study
+% ============================================================
+% Bibliography for: "Does Sycophancy Win?"
+% Target: Transactions of the Association for Computational Linguistics
+% ============================================================
+
+% --- RLHF / Alignment Foundations ---
 
 @article{ouyang2022training,
   title={Training language models to follow instructions with human feedback},
-  author={Ouyang, Long and Wu, Jeffrey and Jiang, Xu and Almeida, Diogo and Wainwright, Carroll and Mishkin, Pamela and Zhang, Chong and Agarwal, Sandhini and Slama, Katarina and Ray, Alex and others},
+  author={Ouyang, Long and Wu, Jeffrey and Jiang, Xu and Almeida, Diogo
+          and Wainwright, Carroll and Mishkin, Pamela and Zhang, Chong
+          and Agarwal, Sandhini and Slama, Katarina and Ray, Alex
+          and others},
   journal={Advances in Neural Information Processing Systems},
   volume={35},
   pages={27730--27744},
   year={2022}
 }
 
-@article{perez2022discovering,
-  title={Discovering language model behaviors with model-written evaluations},
-  author={Perez, Ethan and Ringer, Sam and Lukosiute, Kamile and Nguyen, Karina and Chen, Edwin and Heiner, Scott and Pettit, Craig and Olsson, Catherine and Kundu, Sandipan and Kadavath, Saurav and others},
-  journal={arXiv preprint arXiv:2212.09251},
+@article{bai2022training,
+  title={Training a helpful and harmless assistant with reinforcement
+         learning from human feedback},
+  author={Bai, Yuntao and Jones, Andy and Ndousse, Kamal and Askell, Amanda
+          and Chen, Anna and DasSarma, Nova and Drain, Dawn and Fort, Stanislav
+          and Ganguli, Deep and Henighan, Tom and others},
+  journal={arXiv preprint arXiv:2204.05862},
   year={2022}
 }
 
-@article{sharma2023towards,
-  title={Towards understanding sycophancy in language models},
-  author={Sharma, Mrinank and Tong, Meg and Korbak, Tomasz and Duvenaud, David and Askell, Amanda and Bowman, Samuel R and Cheng, Newton and Durmus, Esin and Hatfield-Dodds, Zac and Johnston, Scott and others},
-  journal={arXiv preprint arXiv:2310.13548},
-  year={2023}
-}
-
-@article{wei2023simple,
-  title={Simple synthetic data reduces sycophancy in large language models},
-  author={Wei, Jerry and Huang, Da and Lu, Yifeng and Zhou, Denny and Le, Quoc V},
-  journal={arXiv preprint arXiv:2308.03958},
-  year={2023}
-}
-
-@article{zheng2023judging,
-  title={Judging {LLM}-as-a-judge with {MT}-Bench and Chatbot Arena},
-  author={Zheng, Lianmin and Chiang, Wei-Lin and Sheng, Ying and Zhuang, Siyuan and Wu, Zhanghao and Zhuang, Yonghao and Lin, Zi and Li, Zhuohan and Li, Dacheng and Xing, Eric and others},
+@article{rafailov2023direct,
+  title={Direct preference optimization: Your language model is secretly
+         a reward model},
+  author={Rafailov, Rafael and Sharma, Archit and Mitchell, Eric
+          and Ermon, Stefano and Manning, Christopher D and Finn, Chelsea},
   journal={Advances in Neural Information Processing Systems},
   volume={36},
   year={2023}
 }
 
+% --- Sycophancy: Detection, Taxonomy, Measurement ---
+
+@article{perez2022discovering,
+  title={Discovering language model behaviors with model-written evaluations},
+  author={Perez, Ethan and Ringer, Sam and Lukosiute, Kamile and Nguyen, Karina
+          and Chen, Edwin and Heiner, Scott and Pettit, Craig and Olsson, Catherine
+          and Kundu, Sandipan and Kadavath, Saurav and others},
+  journal={arXiv preprint arXiv:2212.09251},
+  year={2022}
+}
+
+@inproceedings{sharma2023towards,
+  title={Towards understanding sycophancy in language models},
+  author={Sharma, Mrinank and Tong, Meg and Korbak, Tomasz and Duvenaud, David
+          and Askell, Amanda and Bowman, Samuel R and Cheng, Newton
+          and Durmus, Esin and Hatfield-Dodds, Zac and Johnston, Scott
+          and others},
+  booktitle={The Twelfth International Conference on Learning Representations},
+  year={2024}
+}
+
+@article{wei2023simple,
+  title={Simple synthetic data reduces sycophancy in large language models},
+  author={Wei, Jerry and Huang, Da and Lu, Yifeng and Zhou, Denny
+          and Le, Quoc V},
+  journal={arXiv preprint arXiv:2308.03958},
+  year={2023}
+}
+
+@article{shapira2026rlhf,
+  title={How {RLHF} Amplifies Sycophancy},
+  author={Shapira, Itai and Benad{\`e}, Gerdus and Procaccia, Ariel D.},
+  journal={arXiv preprint arXiv:2602.01002},
+  year={2026}
+}
+
+@inproceedings{sun2025measuring,
+  title={Measuring Sycophancy of Language Models in Multi-turn Dialogues},
+  author={Sun, Jie and others},
+  booktitle={Findings of the Association for Computational Linguistics:
+             {EMNLP} 2025},
+  publisher={Association for Computational Linguistics},
+  year={2025}
+}
+
+@inproceedings{echoes2025argument,
+  title={Echoes of Agreement: Argument Driven Sycophancy in Large Language
+         Models},
+  author={others},
+  booktitle={Findings of the Association for Computational Linguistics:
+             {EMNLP} 2025},
+  publisher={Association for Computational Linguistics},
+  year={2025}
+}
+
+@inproceedings{challenging2025evaluator,
+  title={Challenging the Evaluator: {LLM} Sycophancy Under User Rebuttal},
+  author={others},
+  booktitle={Findings of the Association for Computational Linguistics:
+             {EMNLP} 2025},
+  publisher={Association for Computational Linguistics},
+  year={2025}
+}
+
+@article{syceval2025,
+  title={{SycEval}: Evaluating {LLM} Sycophancy},
+  author={others},
+  journal={arXiv preprint arXiv:2502.08177},
+  year={2025}
+}
+
+% --- LLM Evaluation and Preference Data ---
+
+@article{zheng2023judging,
+  title={Judging {LLM}-as-a-judge with {MT}-Bench and Chatbot Arena},
+  author={Zheng, Lianmin and Chiang, Wei-Lin and Sheng, Ying
+          and Zhuang, Siyuan and Wu, Zhanghao and Zhuang, Yonghao
+          and Lin, Zi and Li, Zhuohan and Li, Dacheng and Xing, Eric
+          and others},
+  journal={Advances in Neural Information Processing Systems},
+  volume={36},
+  year={2023}
+}
+
+@article{chiang2024chatbot,
+  title={Chatbot Arena: An Open Platform for Evaluating {LLMs} by Human
+         Preference},
+  author={Chiang, Wei-Lin and Zheng, Lianmin and Sheng, Ying
+          and Angelopoulos, Anastasios Nikolas and Li, Tianle
+          and Li, Dacheng and Zhang, Hao and Zhu, Banghua
+          and Jordan, Michael and Gonzalez, Joseph E and Stoica, Ion},
+  journal={arXiv preprint arXiv:2403.04132},
+  year={2024}
+}
+
 @article{dubois2024alpacafarm,
-  title={{AlpacaFarm}: A simulation framework for methods that learn from human feedback},
-  author={Dubois, Yann and Li, Chen Xuechen and Taori, Rohan and Zhang, Tianyi and Gulrajani, Ishaan and Ba, Jimmy and Guestrin, Carlos and Liang, Percy and Hashimoto, Tatsunori B},
+  title={{AlpacaFarm}: A simulation framework for methods that learn
+         from human feedback},
+  author={Dubois, Yann and Li, Chen Xuechen and Taori, Rohan
+          and Zhang, Tianyi and Gulrajani, Ishaan and Ba, Jimmy
+          and Guestrin, Carlos and Liang, Percy
+          and Hashimoto, Tatsunori B},
   journal={Advances in Neural Information Processing Systems},
   volume={36},
   year={2024}
 }
 
-@article{rafailov2023direct,
-  title={Direct preference optimization: Your language model is secretly a reward model},
-  author={Rafailov, Rafael and Sharma, Archit and Mitchell, Eric and Ermon, Stefano and Manning, Christopher D and Finn, Chelsea},
-  journal={Advances in Neural Information Processing Systems},
-  volume={36},
-  year={2023}
+@inproceedings{wang2018glue,
+  title={{GLUE}: A Multi-Task Benchmark and Analysis Platform for Natural
+         Language Understanding},
+  author={Wang, Alex and Singh, Amanpreet and Michael, Julian
+          and Hill, Felix and Levy, Omer and Bowman, Samuel R},
+  booktitle={Proceedings of the {EMNLP} Workshop {BlackboxNLP}:
+             Analyzing and Interpreting Neural Networks for NLP},
+  year={2018}
 }
 
+% --- Systematic Biases in LLM Outputs ---
+% [TACL paper: second direct TACL citation in this paper]
+
+@article{tjuatja2024llms,
+  title={Do {LLMs} Exhibit Human-like Response Biases? {A} Case Study
+         in Survey Design},
+  author={Tjuatja, Lindia and Chen, Valerie and Wu, Tongshuang
+          and Talwalkwar, Ameet and Neubig, Graham},
+  journal={Transactions of the Association for Computational Linguistics},
+  volume={12},
+  pages={1011--1026},
+  year={2024},
+  publisher={MIT Press},
+  doi={10.1162/tacl\_a\_00685}
+}
+
+% --- Causal Inference in NLP ---
+% [TACL paper: primary TACL citation in this paper]
+
 @article{feder2022causal,
-  title={Causal inference in natural language processing: Estimation, prediction, interpretation and beyond},
-  author={Feder, Amir and Keith, Katherine A and Manzoor, Emaad and Pryzant, Reid and Sridhar, Dhanya and Wood-Doughty, Zach and Eisenstein, Jacob and Grimmer, Justin and Reichart, Roi and Roberts, Margaret E and others},
+  title={Causal inference in natural language processing: Estimation,
+         prediction, interpretation and beyond},
+  author={Feder, Amir and Keith, Katherine A and Manzoor, Emaad
+          and Pryzant, Reid and Sridhar, Dhanya and Wood-Doughty, Zach
+          and Eisenstein, Jacob and Grimmer, Justin and Reichart, Roi
+          and Roberts, Margaret E and others},
   journal={Transactions of the Association for Computational Linguistics},
   volume={10},
   pages={1138--1158},
@@ -65,7 +188,8 @@
 }
 
 @article{rosenbaum1983central,
-  title={The central role of the propensity score in observational studies for causal effects},
+  title={The central role of the propensity score in observational studies
+         for causal effects},
   author={Rosenbaum, Paul R and Rubin, Donald B},
   journal={Biometrika},
   volume={70},
@@ -75,34 +199,30 @@
   publisher={Oxford University Press}
 }
 
+% --- Inter-Rater Reliability ---
+
+@article{landis1977measurement,
+  title={The measurement of observer agreement for categorical data},
+  author={Landis, J Richard and Koch, Gary G},
+  journal={Biometrics},
+  volume={33},
+  number={1},
+  pages={159--174},
+  year={1977},
+  publisher={JSTOR}
+}
+
+% --- Multiple Testing ---
+
 @article{benjamini1995controlling,
-  title={Controlling the false discovery rate: a practical and powerful approach to multiple testing},
+  title={Controlling the false discovery rate: a practical and powerful
+         approach to multiple testing},
   author={Benjamini, Yoav and Hochberg, Yosef},
-  journal={Journal of the Royal Statistical Society: Series B (Methodological)},
+  journal={Journal of the Royal Statistical Society: Series B
+           (Methodological)},
   volume={57},
   number={1},
   pages={289--300},
   year={1995},
   publisher={Wiley Online Library}
-}
-
-@article{chiang2024chatbot,
-  title={Chatbot Arena: An Open Platform for Evaluating {LLMs} by Human Preference},
-  author={Chiang, Wei-Lin and Zheng, Lianmin and Sheng, Ying and Angelopoulos, Anastasios Nikolas and Li, Tianle and Li, Dacheng and Zhang, Hao and Zhu, Banghua and Jordan, Michael and Gonzalez, Joseph E and Stoica, Ion},
-  journal={arXiv preprint arXiv:2403.04132},
-  year={2024}
-}
-
-@article{bai2022training,
-  title={Training a helpful and harmless assistant with reinforcement learning from human feedback},
-  author={Bai, Yuntao and Jones, Andy and Ndousse, Kamal and Askell, Amanda and Chen, Anna and DasSarma, Nova and Drain, Dawn and Fort, Stanislav and Ganguli, Deep and Henighan, Tom and others},
-  journal={arXiv preprint arXiv:2204.05862},
-  year={2022}
-}
-
-@article{cotra2021case,
-  title={The case for aligning narrowly superhuman models},
-  author={Cotra, Ajeya},
-  journal={Alignment Forum},
-  year={2021}
 }

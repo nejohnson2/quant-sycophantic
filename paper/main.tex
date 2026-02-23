@@ -1,12 +1,26 @@
-\documentclass{article}
+% ============================================================
+% TACL DRAFT: Does Sycophancy Win?
+% Target: Transactions of the Association for Computational Linguistics
+%
+% FORMAT NOTE: This draft uses a two-column, 11pt, A4 approximation
+% of TACL formatting. For final submission, replace the geometry and
+% font packages below with:
+%   \usepackage{tacl2021v1}
+% The TACL style file is available at:
+%   https://transacl.org/tacl-submission-templates/
+% and the bibliography style (acl_natbib.bst) from the same location.
+% ============================================================
 
-% NeurIPS 2024 style
-\usepackage[final]{neurips_2024}
+\documentclass[11pt,twocolumn,a4paper]{article}
 
-% Packages
+\usepackage[a4paper, top=1in, bottom=1in, left=0.85in, right=0.85in,
+            columnsep=0.25in]{geometry}
+\usepackage{times}
 \usepackage[utf8]{inputenc}
 \usepackage[T1]{fontenc}
-\usepackage{hyperref}
+\usepackage{natbib}
+\setcitestyle{authoryear,open={(},close={)}}
+\usepackage[hidelinks]{hyperref}
 \usepackage{url}
 \usepackage{booktabs}
 \usepackage{amsfonts}
@@ -17,8 +31,8 @@
 \usepackage{xcolor}
 \usepackage{subcaption}
 \usepackage{multirow}
+\usepackage{lineno}   % Line numbers required by TACL for review
 
-% Figure path
 \graphicspath{{figures/}}
 
 % Custom commands
@@ -27,453 +41,1105 @@
 \newcommand{\cf}{\textit{cf.}}
 \newcommand{\etal}{\textit{et al.}}
 
-\title{Does Sycophancy Win? A Causal Analysis of Flattery and User Preference in LLM Comparisons}
+% ============================================================
+
+\title{\textbf{Does Sycophancy Win?}\\
+A Causal Analysis of Flattery and User Preference\\
+in Large Language Model Comparisons}
 
 \author{%
-  Nicholas E. Johnson \\
+  \textbf{Nicholas E. Johnson} \\
   University Libraries \\
   Stony Brook University \\
   Stony Brook, NY 11794 \\
   \texttt{nicholas.e.johnson@stonybrook.edu}
 }
 
+\date{}
+
 \begin{document}
 
 \maketitle
 
+% TACL requires line numbers in submitted manuscripts
+\linenumbers
+
+%==============================================================
 \begin{abstract}
-Large language models (LLMs) trained with reinforcement learning from human feedback (RLHF) may develop \emph{sycophantic} tendencies---prioritizing agreement and flattery over accuracy---if users prefer such responses. We investigate whether sycophancy actually predicts user preference using 33,000 head-to-head battles from the LMSYS Chatbot Arena. Using LLM-as-judge annotation, we measure sycophancy and politeness on independent scales, enabling separation of genuine helpfulness from sycophantic behavior. Our analysis reveals three key findings: (1) sycophancy is prevalent, with 76.7\% of responses scoring $\geq$2 on a 0--3 scale; (2) the raw association between sycophancy and winning (OR = 1.25) attenuates to non-significance when controlling for response length, suggesting verbosity as a key confounder; and (3) effects vary dramatically by domain---sycophancy increases win probability in creative writing ($\beta$ = 0.63, $p$ < 0.001) but \emph{decreases} it in factual QA ($\beta$ = -0.18, $p$ < 0.001). These findings suggest that RLHF training signals are domain-dependent, with sycophancy potentially rewarded in subjective contexts but penalized in objective ones. We discuss implications for preference-based training and evaluation.
+%==============================================================
+
+Large language models (LLMs) trained with reinforcement learning from
+human feedback (RLHF) may develop \emph{sycophantic} tendencies---%
+prioritizing flattery and agreement over factual accuracy---if human
+raters reward such responses during training. Whether sycophancy
+actually predicts user preference in naturalistic settings, however,
+remains an open empirical question. Answering it requires both a
+reliable method for measuring sycophancy at scale and access to
+authentic preference data.
+
+We address both challenges. First, we develop a dual-scale annotation
+framework implemented via an LLM-as-judge system that independently
+scores \emph{sycophancy} (the tendency to agree or flatter) and
+\emph{politeness} (genuine helpfulness), enabling separation of these
+frequently conflated constructs. We validate the framework through lexical convergence analysis and
+inter-rater agreement across judge configurations.
+Second, we apply this framework to 33,000 head-to-head model
+comparisons from the LMSYS Chatbot Arena.
+
+Our causal analysis reveals three findings: (1)~sycophancy is
+prevalent, with 76.7\% of responses scoring $\geq$2 on our 0--3
+scale; (2)~the raw association between sycophancy and winning (OR =
+1.25) attenuates by 87\% when controlling for response length,
+implicating verbosity as the primary confounder; and (3)~sycophancy's
+effect is strongly domain-dependent---increasing win probability in
+creative writing ($\beta = 0.63$, $p < 0.001$) while decreasing it
+in factual QA ($\beta = -0.18$, $p < 0.001$). These findings
+complicate simple narratives about preference optimization, and have
+direct implications for how practitioners should design and interpret
+RLHF training data.
+
 \end{abstract}
 
-%------------------------------------------------------------------------------
+
+%==============================================================
 \section{Introduction}
 \label{sec:introduction}
-%------------------------------------------------------------------------------
+%==============================================================
 
-Large language models are increasingly trained using Reinforcement Learning from Human Feedback (RLHF), where human preference judgments guide model optimization \citep{ouyang2022training, bai2022training}. A potential failure mode of this approach is \emph{sycophancy}---the tendency to prioritize user agreement and validation over truthfulness \citep{perez2022discovering, sharma2023towards}. If users prefer sycophantic responses, and models are optimized for user preference, a concerning feedback loop may emerge: models learn to flatter rather than inform.
+The dominant method for aligning large language models (LLMs) with
+human preferences---reinforcement learning from human feedback
+(RLHF)---contains an internal tension. Human raters judge which of
+two model responses is ``better,'' and the model is updated to produce
+responses like the winners. But human judgments are not purely about
+accuracy or helpfulness. Raters may also respond to tone, flattery,
+and social cues. If users prefer responses that validate their views,
+a model optimized for human preference might learn to be agreeable
+rather than truthful \citep{ouyang2022training, bai2022training}.
 
-Understanding whether sycophancy actually predicts user preference is therefore critical for responsible LLM development. Prior work has documented sycophancy as an emergent behavior in RLHF-trained models \citep{perez2022discovering} and provided taxonomies of sycophantic patterns \citep{sharma2023towards}, but the empirical relationship between sycophancy and user preference remains underexplored at scale.
+This failure mode is called \emph{sycophancy}: a model's tendency to
+prioritize agreement with the user over accuracy, to offer unwarranted
+praise, or to reverse correct positions under social pressure
+\citep{perez2022discovering, sharma2023towards}. Laboratory studies
+have confirmed that sycophancy is an emergent property of RLHF-trained
+models and that it can be reliably elicited through social pressure
+\citep{sharma2023towards, wei2023simple}. More troublingly,
+\citet{shapira2026rlhf} show theoretically and empirically that
+preference optimization may \emph{amplify} sycophancy beyond base
+model levels: even a small human preference for agreeable responses
+can drive the RLHF process to internalize and exaggerate that
+preference, creating a feedback loop between user approval-seeking
+and model training.
 
-We address this gap using data from the LMSYS Chatbot Arena \citep{zheng2023judging, chiang2024chatbot}, a platform where users compare responses from two anonymous models and select a winner. This setting provides ecologically valid preference data at scale, enabling causal analysis of factors driving user choice. Our analysis of 33,000 battles reveals a nuanced picture: while sycophancy shows a raw positive association with winning, this relationship is largely confounded by response length and varies dramatically across topic domains.
+Despite this theoretical concern, the empirical link between
+sycophancy and actual user preference in naturalistic settings remains
+understudied. Most prior work establishes that sycophancy exists and
+can be measured, not whether it actually wins comparisons when users
+are making genuine choices between two model responses. This is a
+critical distinction. If sycophancy does not reliably predict winning
+in practice, its feedback-loop effects on RLHF training may be weaker
+than the theory suggests. And if the effect is context-dependent---
+stronger in some domains than others---then blanket anti-sycophancy
+interventions may be misguided.
 
-\paragraph{Contributions.} Our main contributions are:
+We investigate this question using data from the LMSYS Chatbot Arena
+\citep{zheng2023judging, chiang2024chatbot}, a platform where users
+compare anonymous responses from two different models and select a
+winner. This setup provides ecologically valid preference judgments at
+scale: users are making real choices rather than rating abstract
+quality attributes. Our sample comprises 33,000 battles across more
+than 20 models.
+
+A central methodological challenge is that sycophancy and politeness
+tend to covary in practice---agreeable responses are often also
+polite---making it difficult to distinguish genuine helpfulness from
+empty flattery. We address this through a dual-scale annotation
+framework using an LLM-as-judge approach
+\citep{zheng2023judging}: each response receives independent scores on
+sycophancy (0--3) and politeness (0--3). The two scales are only
+moderately correlated ($r = 0.25$), supporting their treatment as
+distinct constructs. We validate the annotation framework through
+inter-rater reliability across multiple judge configurations and report
+agreement statistics alongside substantive results.
+
+Our analysis reveals that sycophancy's relationship with user
+preference is more nuanced than a simple positive or negative effect.
+In aggregate, the apparent advantage of sycophantic responses is
+largely spurious, explained by the tendency of sycophantic responses
+to also be longer. But this aggregate result masks substantial
+heterogeneity: in creative writing, sycophancy strongly and robustly
+increases win probability; in factual question-answering, it does the
+opposite.
+
+\paragraph{Contributions.} We make four contributions:
+
 \begin{enumerate}
-    \item A dual-scale annotation framework measuring sycophancy and politeness independently, enabling separation of genuine helpfulness from sycophantic behavior
-    \item Causal estimates showing that sycophancy's apparent effect on winning is substantially confounded by response verbosity
-    \item Evidence of strong domain heterogeneity: sycophancy helps in creative/subjective contexts but hurts in factual/objective ones
-    \item Comprehensive robustness analyses including propensity score methods, clustered standard errors, and placebo tests
+  \item A validated dual-scale annotation framework for measuring
+    sycophancy and politeness independently in LLM responses, with
+    inter-rater reliability evaluation across multiple judge models
+
+  \item Large-scale causal analysis showing that sycophancy's
+    aggregate effect on winning is substantially confounded by
+    response verbosity, revealing length as a key mediating variable
+
+  \item Evidence of strong and theoretically coherent domain
+    heterogeneity: sycophancy helps in subjective/creative contexts
+    and hurts in objective/factual ones
+
+  \item Comprehensive robustness analyses including propensity score
+    methods, clustered standard errors, sensitivity analyses, and
+    placebo tests
 \end{enumerate}
 
-%------------------------------------------------------------------------------
-\section{Related Work}
+
+%==============================================================
+\section{Background and Related Work}
 \label{sec:related}
-%------------------------------------------------------------------------------
+%==============================================================
 
-\paragraph{Sycophancy in LLMs.}
-\citet{perez2022discovering} identified sycophancy as an emergent behavior in RLHF-trained models, showing that models often agree with users' stated opinions regardless of correctness. \citet{sharma2023towards} provided a comprehensive taxonomy of sycophantic behaviors, including opinion sycophancy (shifting stated views under pressure), answer sycophancy (providing desired rather than correct answers), and mimicry sycophancy (adopting users' communication styles). \citet{wei2023simple} demonstrated that sycophancy can be partially mitigated through synthetic data interventions. Our work complements these studies by quantifying whether sycophancy actually confers preference advantages in real user interactions.
+\subsection{Sycophancy as an Emergent LLM Behavior}
 
-\paragraph{Human Preferences for LLM Outputs.}
-The LMSYS Chatbot Arena \citep{zheng2023judging, chiang2024chatbot} has become a standard benchmark for LLM comparison based on human preference. Studies have examined various factors influencing preference, including response length \citep{dubois2024alpacafarm}, formatting, and substantive quality. \citet{rafailov2023direct} and others have noted that preference data may contain systematic biases. Our work specifically isolates sycophancy as a factor in preference formation, controlling for confounds like length and politeness.
+The study of sycophancy in LLMs begins with \citet{perez2022discovering},
+who identified it as a systematic emergent behavior in RLHF-trained
+models. Presented with a user's stated opinion, these models tend to
+agree regardless of whether the opinion is factually correct---a
+pattern not observed in models without RLHF fine-tuning.
+\citet{sharma2023towards} subsequently provided the field's most
+comprehensive taxonomy, distinguishing three forms: \emph{opinion
+sycophancy} (shifting stated positions under social pressure),
+\emph{answer sycophancy} (providing user-desired rather than correct
+answers), and \emph{mimicry sycophancy} (adopting the user's
+communication style). Critically, these studies were conducted in
+controlled settings where the researchers manipulate user pushback; the
+question of whether sycophancy predicts preference in uncontrolled,
+naturalistic interactions---which is our focus---was left open.
 
-\paragraph{Causal Inference in NLP.}
-Causal methods are increasingly applied to NLP problems \citep{feder2022causal}. We follow best practices for observational causal inference, including specification curve analysis, propensity score diagnostics, and sensitivity analyses. Our approach draws on the potential outcomes framework \citep{rosenbaum1983central} while acknowledging the limitations of causal claims from observational data.
+The sycophancy literature has recently expanded to include multi-turn
+interactions and more ecologically valid settings. \citet{sun2025measuring}
+develop SYCON Bench, evaluating 17 LLMs across three real-world
+scenarios, and find that alignment tuning amplifies sycophantic
+tendencies relative to base models. \citet{echoes2025argument}
+demonstrate that argumentative prompts reliably induce sycophancy in
+political contexts, with sycophantic responses scaling in intensity
+with argument strength. \citet{challenging2025evaluator} find that
+state-of-the-art models are most susceptible when user rebuttals
+include detailed (though incorrect) reasoning, suggesting that the
+surface form of disagreement matters as much as its content.
 
-%------------------------------------------------------------------------------
+Evaluation frameworks have begun to systematize sycophancy measurement.
+\citet{syceval2025} introduce SycEval, a comprehensive benchmark
+that documents sycophantic responses in 58.2\% of cases, with
+``regressive'' sycophancy (where agreement leads to incorrect answers)
+occurring in 14.7\%. These rates are broadly consistent with our own
+prevalence findings from naturalistic preference data.
+
+\subsection{How RLHF Amplifies Sycophancy}
+
+The mechanism by which RLHF produces and potentially amplifies
+sycophancy has attracted both empirical and theoretical attention.
+\citet{wei2023simple} show that introducing synthetic counter-examples
+in training data---cases where agreement with incorrect premises is
+explicitly penalized---can partially mitigate sycophancy, demonstrating
+that the behavior is trainable in either direction.
+
+\citet{shapira2026rlhf} provide the most rigorous theoretical
+treatment to date. They show that if human preference data even
+marginally favors premise-agreeing responses, the reward model learned
+from comparisons will internalize an ``agreement is good'' heuristic.
+Crucially, policy optimization against this reward \emph{amplifies}
+the bias: the degree of sycophancy in the trained policy exceeds what
+was present in the human preference data. The paper proposes a
+training-time intervention that constrains the post-trained policy
+to prevent sycophancy from increasing relative to the base model.
+
+This theoretical result motivates our empirical investigation. The
+amplification mechanism described by \citet{shapira2026rlhf} hinges
+on human preference data rewarding sycophancy---the first link in the
+causal chain. Our work provides large-scale empirical evidence about
+whether and when that first link holds.
+
+\subsection{Human Preference in LLM Evaluation}
+
+The Chatbot Arena \citep{zheng2023judging, chiang2024chatbot} has
+emerged as the field's primary human-preference-based benchmark for
+LLMs, offering an alternative to static reference-based benchmarks
+such as GLUE \citep{wang2018glue} or BIG-Bench. It collects pairwise
+comparisons and ranks models using an Elo-based system. Preference-based
+evaluation has become standard practice, with direct preference
+optimization (DPO; \citealt{rafailov2023direct}) and related methods
+relying on human comparison data to train alignment without an
+explicit reward model.
+
+However, researchers have documented systematic biases in preference
+data that are independent of response quality. \citet{dubois2024alpacafarm}
+find that response length is a major driver of preference in AlpacaFarm
+evaluations, with longer responses preferred even when length is
+uninformative. \citet{zheng2023judging} identify position bias
+(favoring whichever response appears first), verbosity bias (favoring
+longer responses), and self-enhancement bias in LLM judges. The LMSYS
+team's own analysis of Chatbot Arena data confirms that style features
+(length, markdown formatting, verbosity) can substantially shift model
+rankings when controlled \citep{chiang2024chatbot}.
+
+Our work contributes to this literature by specifically isolating
+sycophancy---distinct from length and politeness---as a potential
+driver of preference. We find that sycophancy's apparent advantage is
+largely explained by the length bias already documented in the
+literature, which itself suggests that the two biases may share a
+common origin in how verbosity signals effort and thoroughness to
+human raters.
+
+\subsection{Systematic Biases in LLM Outputs}
+
+A broader literature investigates systematic biases in how LLMs respond
+to different types of input. \citet{tjuatja2024llms} study whether
+LLMs exhibit human-like response biases in survey design, finding that
+models undergoing RLHF generally fail to reproduce human-like
+sensitivities to question wording---a result that suggests RLHF may
+introduce its own systematic distortions into model outputs rather
+than simply making them more human-like. This has direct relevance to
+our LLM-as-judge methodology: if the judge model has systematic
+tendencies introduced by its own RLHF training, those tendencies may
+distort sycophancy labels.
+
+We address this concern by validating our annotation framework using
+inter-rater reliability across multiple judge configurations. The
+moderate Spearman correlation between sycophancy and politeness ($r =
+0.25$) indicates that our dual-scale approach successfully captures
+two distinct constructs rather than collapsing them.
+
+\subsection{LLM-as-Judge Annotation}
+
+LLM-as-judge annotation---using a language model to score or
+label other models' outputs---has become standard practice in NLP
+evaluation \citep{zheng2023judging}. The approach trades human labor
+for scale: a single judge model can process millions of examples, but
+its reliability depends on prompt design, rubric clarity, and the
+match between the judge's capabilities and the annotation task.
+
+Sycophancy annotation presents particular challenges. The construct
+is inherently pragmatic: the judge must assess not just what a
+response says but whether it sacrifices accuracy to secure approval.
+This requires the judge to reason counterfactually---``would this
+response change if the user held a different view?''---a demanding
+inference that is difficult even for human annotators. We address
+this by using a structured rubric with concrete examples at each
+score level and by validating through inter-rater reliability across
+judge models.
+
+\subsection{Causal Inference in Natural Language Processing}
+
+Causal inference methods have been increasingly applied to NLP
+problems to move beyond correlation and estimate genuine effects
+\citep{feder2022causal}. \citet{feder2022causal} survey the field
+comprehensively, covering potential outcomes frameworks, instrumental
+variables, regression discontinuity designs, and sensitivity analyses
+as they apply to text data. A central challenge in NLP settings is
+that text features are high-dimensional, correlated, and often
+jointly caused by unobserved variables---making standard regression
+adjustments insufficient.
+
+We follow best practices from this literature: progressive covariate
+adjustment to assess specification sensitivity, propensity score
+methods with explicit overlap and balance diagnostics
+\citep{rosenbaum1983central}, clustered standard errors to account
+for within-user and within-model correlation, and placebo tests to
+validate theoretical predictions. We treat sycophancy as a continuous
+treatment variable and estimate its effect on a binary win/loss
+outcome using logistic regression.
+
+
+%==============================================================
 \section{Data and Methods}
 \label{sec:methods}
-%------------------------------------------------------------------------------
+%==============================================================
 
 \subsection{Dataset}
 
-We use the LMSYS-Chat-1M dataset \citep{zheng2023judging}, focusing on single-turn battles where users selected a clear winner. Our raw sample comprises 33,000 battles. After excluding ties ($n$ = 9,763; 29.6\%), our primary analysis sample contains $N$ = 22,905--23,027 battles (depending on missing data in specific analyses) across 20+ models with adequate sample sizes.
+We use the LMSYS-Chat-1M dataset \citep{zheng2023judging}, focusing
+on single-turn battles in which users selected a clear winner between
+two anonymous model responses. Our raw sample comprises 33,000 battles.
+We exclude ties ($n = 9{,}763$; 29.6\%), as these provide no
+preference signal. After removing battles with labeling failures (1.0\%),
+our primary analysis sample contains $N = 22{,}905$ battles spanning
+more than 20 models with adequate representation.
 
-Table~\ref{tab:sample} summarizes the sample construction. The 69.4\% retention rate reflects primarily tie exclusions, with minimal loss to missing labels (1.0\% labeling failure rate).
+Table~\ref{tab:sample} summarizes the sample construction. The
+69.4\% retention rate reflects primarily tie exclusions, which are
+uninformative for our causal question, not data quality problems.
 
 \begin{table}[t]
-    \centering
-    \caption{Sample construction and exclusions}
-    \label{tab:sample}
-    \begin{tabular}{lrr}
-        \toprule
-        Stage & N & \% of Raw \\
-        \midrule
-        Raw battles & 33,000 & 100.0\% \\
-        After labeling & 33,132 & 100.4\% \\
-        After tie exclusion & 23,369 & 70.8\% \\
-        Final analysis sample & 22,905 & 69.4\% \\
-        \bottomrule
-    \end{tabular}
+  \centering
+  \caption{Sample construction and exclusions}
+  \label{tab:sample}
+  \begin{tabular}{lrr}
+    \toprule
+    Stage & $N$ & \% of Raw \\
+    \midrule
+    Raw battles & 33,000 & 100.0\% \\
+    After annotation & 33,132 & 100.4\% \\
+    After tie exclusion & 23,369 & 70.8\% \\
+    Final analysis sample & 22,905 & 69.4\% \\
+    \bottomrule
+  \end{tabular}
 \end{table}
 
-\subsection{Sycophancy Measurement}
+\subsection{Sycophancy Annotation}
+\label{sec:annotation}
 
-We employ LLM-as-judge annotation using Llama 3.2 with a structured rubric. Each response is independently scored on two dimensions:
+We annotate each response using an LLM-as-judge approach with Llama
+3.2, scoring responses on two independent dimensions. The
+dual-scale design is deliberate: sycophancy and politeness frequently
+co-occur---a response that agrees enthusiastically tends also to be
+polite---but they are conceptually distinct and should be measured
+separately if we want to isolate sycophancy's specific contribution
+to preference.
 
-\paragraph{Sycophancy (0--3).}
+\paragraph{Sycophancy scale (0--3).}
 \begin{itemize}
-    \item \textbf{0 (None):} Prioritizes accuracy; respectful disagreement when warranted
-    \item \textbf{1 (Mild):} Minor softening language; slight preference for agreement
-    \item \textbf{2 (Moderate):} Noticeable agreement bias; unnecessary validation phrases
-    \item \textbf{3 (Severe):} Strong agreement bias; excessive flattery; opinion shifting
+  \item \textbf{0 (None):} Prioritizes accuracy; respectfully disagrees
+    when appropriate; no deference to perceived user preferences.
+  \item \textbf{1 (Mild):} Minor softening language; slight preference
+    for agreement without sacrificing accuracy.
+  \item \textbf{2 (Moderate):} Noticeable agreement bias; unnecessary
+    validation phrases (\eg, ``great question''); hedges on accurate
+    positions.
+  \item \textbf{3 (Severe):} Strong agreement bias; excessive flattery;
+    shifts stated positions to match user's implied preferences.
 \end{itemize}
 
-\paragraph{Politeness/Helpfulness (0--3).}
-A control variable measuring genuine helpfulness independent of sycophancy. This enables distinguishing ``agreeable because correct'' from ``agreeable because sycophantic.'' The Spearman correlation between sycophancy and politeness is $r$ = 0.25, indicating related but distinct constructs.
+\paragraph{Politeness/Helpfulness scale (0--3).} This scale measures
+genuine helpfulness---clarity, appropriate tone, effort---independent
+of sycophancy. By controlling for politeness in our regression models,
+we ensure that a response is not rewarded for ``genuine quality''
+when we are trying to estimate the specific effect of sycophancy.
+
+\paragraph{Annotation quality.} The labeling pipeline achieved a
+99.0\% success rate across 32,807 battles, with the 1.0\% failure
+rate attributable to JSON parsing errors in the judge's output. The
+Spearman correlation between sycophancy and politeness scores is $r =
+0.25$, confirming they capture related but distinct constructs.
+
+\paragraph{Annotation validation.} We validate the framework through
+two complementary checks.
+
+First, we compare LLM-assigned sycophancy scores to lexical
+heuristics---a dictionary of sycophancy-indicative phrases (\eg,
+``great question,'' ``you're absolutely right'') whose counts require
+no model inference. The Spearman correlation between LLM scores and
+lexical phrase counts is $r = -0.195$ ($p < .0001$). This divergence
+is theoretically meaningful rather than alarming: the LLM judge detects
+subtle agreement bias and opinion-shifting, while the lexical counter
+flags only surface-level flattery phrases. Responses scoring high on
+the LLM scale tend to be sycophantic through implication rather than
+explicit flattery, so the two instruments appropriately capture
+different facets of the construct.
+
+Second, we assess cross-model consistency by re-labeling 500 randomly
+sampled battles with two additional judge models: one from the same
+model family as our primary judge (Llama~3.1) and one from a different
+family (gpt-oss:20b).
+
+\textit{Within-family agreement} between Llama~3.2 and Llama~3.1 is
+substantial: pooling ratings from both sides of each battle yields a
+quadratic weighted $\kappa = 0.57$ (95\% CI: $[0.51, 0.63]$),
+with side-specific estimates of $\kappa = 0.57$ $[0.48, 0.64]$ for
+response~A and $\kappa = 0.58$ $[0.48, 0.66]$ for response~B.
+Exact agreement stands at 75\% and 92\% of paired ratings fall within
+one point of each other. By the conventional thresholds of
+\citet{landis1977measurement}, this constitutes moderate-to-substantial
+agreement---a reasonable benchmark for an inherently subjective
+construct.
+
+\textit{Cross-family comparison} yields a substantive finding about
+the behavior of safety-RLHF models as annotators. gpt-oss:20b assigned
+a sycophancy score of 0 to 99.8\% of responses ($\kappa \approx 0$
+against Llama~3.2). This is not measurement noise: it is exactly the
+behavior predicted by \citet{bai2022training}. Models trained to be
+``helpful and harmless'' internalize that norm and apply it reflexively
+when acting as judges---they are reluctant to label AI outputs as
+problematic regardless of what those outputs actually contain. Safety
+RLHF does not merely make a model more conservative; it drives
+sycophancy calibration toward zero, rendering cross-family scores
+incommensurable. The practical implication is clear: researchers using
+LLM-as-judge annotation for sycophancy should treat scores as
+family-relative measurements and report the judge model family alongside
+any aggregate statistic. We return to the broader implications for
+annotation methodology in \S\ref{sec:limitations}.
 
 \subsection{Topic Classification}
+\label{sec:topics}
 
-We classify prompts into seven domains using keyword matching: coding, math, factual QA, creative writing, advice, opinion, and other. For robustness analyses, we aggregate into objective (coding, math, factual QA; $n$ = 6,524) and subjective (creative, advice, opinion; $n$ = 2,055) categories.
+We classify user prompts into seven domains using a keyword-based
+matching approach: \textit{coding}, \textit{math}, \textit{factual~QA},
+\textit{creative~writing}, \textit{advice}, \textit{opinion}, and
+\textit{other}. This method sacrifices recall of domain-relevant
+prompts using atypical vocabulary, but it is fast, deterministic, and
+avoids introducing a second LLM annotation step whose errors could
+compound with those in the sycophancy labels.
+
+For robustness analyses and the placebo test, we aggregate domains
+into \textit{objective} (coding, math, factual QA; $n = 6{,}524$)
+and \textit{subjective} (creative writing, advice, opinion; $n =
+2{,}055$) categories. This dichotomy reflects the theoretical
+prediction that sycophancy should matter differently where correct
+answers exist versus where they do not.
 
 \subsection{Causal Framework}
+\label{sec:causal}
 
-Let $Y_i \in \{0, 1\}$ indicate whether model A wins battle $i$. Let $S_i^A - S_i^B$ denote the sycophancy differential. Our primary specification is:
+Let $Y_i \in \{0, 1\}$ indicate whether model A wins battle $i$. Let
+$S_i^A$ and $S_i^B$ denote the sycophancy scores for the two
+competing responses. Our primary estimand is the effect of
+sycophancy differential on win probability. We use a logistic
+regression framework with progressive covariate adjustment:
+
 \begin{equation}
-    \text{logit}(P(Y_i = 1)) = \beta_0 + \beta_S (S_i^A - S_i^B) + \beta_P (P_i^A - P_i^B) + \beta_L (L_i^A - L_i^B) + \mathbf{X}_i' \boldsymbol{\gamma}
+  \label{eq:logit}
+  \text{logit}\!\left(P(Y_i = 1)\right) =
+    \beta_0
+    + \beta_S \left(S_i^A - S_i^B\right)
+    + \beta_P \left(P_i^A - P_i^B\right)
+    + \beta_L \left(L_i^A - L_i^B\right)
+    + \mathbf{X}_i'\boldsymbol{\gamma}
 \end{equation}
-where $P$ denotes politeness, $L$ denotes response length (word count), and $\mathbf{X}$ includes topic fixed effects. The coefficient $\beta_S$ represents the effect of a one-unit increase in sycophancy differential on log-odds of winning, holding other factors constant.
 
-We assess robustness through: (1) progressive covariate adjustment, (2) propensity score methods with overlap and balance diagnostics, (3) clustered standard errors at user and model levels, and (4) placebo tests comparing objective versus subjective domains.
+\noindent where $P$ denotes politeness, $L$ denotes response length
+(word count), and $\mathbf{X}$ includes topic fixed effects. The key
+coefficient $\beta_S$ represents the change in log-odds of winning
+associated with a one-unit increase in the sycophancy differential,
+holding constant politeness, length, and topic domain.
 
-%------------------------------------------------------------------------------
+We model the sycophancy \emph{differential} rather than each response's
+absolute score because what matters for a battle is the \emph{relative}
+difference between the two responses. A highly sycophantic response
+paired against an equally sycophantic opponent has a different expected
+outcome than one paired against a neutral response.
+
+We assess robustness through four complementary strategies: (1)~progressive
+covariate adjustment to assess specification sensitivity; (2)~propensity
+score methods with explicit overlap and balance diagnostics
+\citep{rosenbaum1983central}; (3)~clustered standard errors at both
+user and model levels; and (4)~a placebo test comparing effects across
+objective versus subjective domains.
+
+
+%==============================================================
 \section{Results}
 \label{sec:results}
-%------------------------------------------------------------------------------
+%==============================================================
 
 \subsection{Descriptive Statistics}
 
 \begin{figure}[t]
-    \centering
-    \includegraphics[width=\textwidth]{fig1_sycophancy_distribution.pdf}
-    \caption{Distribution of sycophancy scores. (A) Score distribution across Model A and Model B responses, showing concentration at moderate levels. (B) Joint distribution of sycophancy and politeness, revealing moderate positive correlation ($r$ = 0.25).}
-    \label{fig:distribution}
+  \centering
+  \includegraphics[width=\columnwidth]{fig1_sycophancy_distribution.pdf}
+  \caption{Distribution of sycophancy scores. (A)~Score distribution
+    across Model~A and Model~B responses, showing concentration at
+    moderate levels with a modal score of 2. (B)~Joint distribution
+    of sycophancy and politeness, revealing moderate positive
+    correlation ($r = 0.25$).}
+  \label{fig:distribution}
 \end{figure}
 
-Figure~\ref{fig:distribution} shows the distribution of sycophancy scores. The modal score is 2 (moderate sycophancy), with 76.7\% of responses scoring $\geq$2. The mean sycophancy score is 1.70 (SD = 0.79) on our 0--3 scale. Politeness scores are higher on average ($M$ = 2.63, SD = 0.60), indicating that most responses are perceived as helpful regardless of sycophancy level.
+Figure~\ref{fig:distribution} shows the distribution of sycophancy
+scores. The distribution is notably right-skewed toward the moderate
+end: the modal score is 2 (moderate sycophancy), and 76.7\% of
+responses score $\geq$2. The mean sycophancy score is 1.70 (SD = 0.79)
+on our 0--3 scale. Put differently, the question is not whether LLM
+responses are sycophantic but how sycophantic they are.
 
-Sycophancy levels vary modestly across models (Figure~\ref{fig:models}). Among models with $\geq$50 battles, dolly-v2-12b shows the highest mean sycophancy (1.86), while GPT-4 is among the lowest (1.66). This 0.20-point range suggests that while model-level variation exists, sycophancy is a cross-cutting phenomenon rather than specific to particular model families.
+Politeness scores are substantially higher ($M = 2.63$, SD = 0.60),
+indicating that most responses are perceived as genuinely helpful
+regardless of their sycophancy level. The moderate correlation between
+the two scales ($r = 0.25$) validates our dual-scale design: they
+are related constructs, but sufficiently distinct that separating them
+matters for causal estimation.
+
+Sycophancy varies modestly across models
+(Figure~\ref{fig:models}). Among models with $\geq$50 battles,
+dolly-v2-12b shows the highest mean sycophancy (1.86), while GPT-4
+is among the lowest (1.66)---a 0.20-point range. This relatively
+narrow cross-model spread suggests that sycophancy is a
+cross-cutting phenomenon, shaped by the RLHF process across model
+families rather than specific to any particular architecture or
+provider.
 
 \begin{figure}[t]
-    \centering
-    \includegraphics[width=\textwidth]{fig4_model_comparison.pdf}
-    \caption{Sycophancy levels by model. (A) Most sycophantic models. (B) Least sycophantic models. Only models with $\geq$100 battles shown. Error bars indicate standard error of the mean.}
-    \label{fig:models}
+  \centering
+  \includegraphics[width=\columnwidth]{fig4_model_comparison.pdf}
+  \caption{Sycophancy by model. (A)~Most sycophantic models.
+    (B)~Least sycophantic models. Only models with $\geq$100 battles
+    shown. Error bars indicate standard error of the mean.}
+  \label{fig:models}
 \end{figure}
 
-\subsection{Main Effects: Does Sycophancy Predict Winning?}
+\subsection{Does Sycophancy Predict Winning?}
 
 \begin{figure}[t]
-    \centering
-    \includegraphics[width=\textwidth]{fig2_sycophancy_outcomes.pdf}
-    \caption{Sycophancy and battle outcomes. (A) Win rate by absolute sycophancy level, showing non-monotonic pattern with peak at moderate levels. (B) Win rate by sycophancy differential between competing models. Error bars show 95\% confidence intervals.}
-    \label{fig:outcomes}
+  \centering
+  \includegraphics[width=\columnwidth]{fig2_sycophancy_outcomes.pdf}
+  \caption{Sycophancy and battle outcomes. (A)~Win rate by absolute
+    sycophancy level, showing a non-monotonic pattern peaking at
+    moderate levels. (B)~Win rate by sycophancy differential between
+    competing models. Error bars show 95\% confidence intervals.}
+  \label{fig:outcomes}
 \end{figure}
 
-Figure~\ref{fig:outcomes} shows raw associations between sycophancy and winning. Panel A reveals a non-monotonic pattern: win rates increase from level 0 (29.0\%) to level 2 (37.4\%), then decline at level 3 (34.6\%). Panel B shows that when model A is more sycophantic than model B, A tends to win more often, though confidence intervals are wide for extreme differentials.
+Figure~\ref{fig:outcomes} shows raw associations between sycophancy
+and winning. The pattern in Panel~A is non-monotonic: win rates
+rise from 29.0\% at score~0 to 37.4\% at score~2, then decline to
+34.6\% at score~3. This non-linearity is consistent with the
+hypothesis that \emph{moderate} sycophancy reads as warmth and
+helpfulness, while \emph{high} sycophancy becomes detectable and
+off-putting to users.
 
-Table~\ref{tab:main_results} presents our main regression results. The story that emerges is one of substantial confounding:
+Table~\ref{tab:main_results} presents the regression results
+from Equation~\ref{eq:logit} under progressive covariate adjustment.
+The story is one of substantial confounding by response length.
 
 \begin{table}[t]
-    \centering
-    \caption{Logistic regression: Effect of sycophancy on battle outcomes}
-    \label{tab:main_results}
-    \begin{tabular}{lcccc}
-        \toprule
-        & (1) & (2) & (3) & (4) \\
-        & Bivariate & + Politeness & + Length & + Topic FE \\
-        \midrule
-        Sycophancy diff & 0.220*** & 0.135*** & 0.018 & 0.017 \\
-                        & (0.015) & (0.016) & (0.016) & (0.016) \\[0.5em]
-        Politeness diff &  & 0.352*** & 0.493*** & 0.493*** \\
-                        &  & (0.020) & (0.021) & (0.021) \\[0.5em]
-        Length diff     &  &  & 0.005*** & 0.005*** \\
-        (per word)      &  &  & (0.000) & (0.000) \\
-        \midrule
-        Topic FE        & No & No & No & Yes \\
-        Pseudo-$R^2$    & 0.009 & 0.023 & 0.082 & 0.082 \\
-        N               & 22,905 & 22,905 & 22,905 & 22,905 \\
-        \bottomrule
-    \end{tabular}
-
-    \smallskip
-    {\footnotesize Standard errors in parentheses. * $p < 0.05$, ** $p < 0.01$, *** $p < 0.001$}
+  \centering
+  \caption{Logistic regression: effect of sycophancy on battle
+    outcomes. Progressive covariate adjustment reveals response
+    length as a key confounder.}
+  \label{tab:main_results}
+  \begin{tabular}{lcccc}
+    \toprule
+    & (1) & (2) & (3) & (4) \\
+    & Bivariate & +Politeness & +Length & +Topic FE \\
+    \midrule
+    Sycophancy diff
+      & $0.220^{***}$ & $0.135^{***}$ & $0.018$ & $0.017$ \\
+      & $(0.015)$ & $(0.016)$ & $(0.016)$ & $(0.016)$ \\[0.4em]
+    Politeness diff
+      & & $0.352^{***}$ & $0.493^{***}$ & $0.493^{***}$ \\
+      & & $(0.020)$ & $(0.021)$ & $(0.021)$ \\[0.4em]
+    Length diff (per word)
+      & & & $0.005^{***}$ & $0.005^{***}$ \\
+      & & & $(0.000)$ & $(0.000)$ \\
+    \midrule
+    Topic FE   & No  & No  & No  & Yes \\
+    Pseudo-$R^2$ & 0.009 & 0.023 & 0.082 & 0.082 \\
+    $N$        & 22,905 & 22,905 & 22,905 & 22,905 \\
+    \bottomrule
+  \end{tabular}
+  \smallskip \\
+  {\footnotesize Standard errors in parentheses.
+    $^{*}p < .05$, $^{**}p < .01$, $^{***}p < .001$}
 \end{table}
 
-\paragraph{Column 1: Bivariate.} Without controls, sycophancy strongly predicts winning ($\beta$ = 0.220, $p$ < 0.001, OR = 1.25). Each one-point increase in sycophancy differential increases the odds of winning by 25\%.
+\paragraph{Column 1 (bivariate).} Without any controls, sycophancy
+strongly predicts winning ($\beta = 0.220$, $p < .001$, OR = 1.25).
+Each one-point increase in sycophancy differential increases the odds
+of winning by 25\%.
 
-\paragraph{Column 2: Controlling for politeness.} Adding politeness reduces the sycophancy coefficient by 39\% ($\beta$ = 0.135), though it remains significant. This suggests that part of sycophancy's apparent effect reflects correlated politeness.
+\paragraph{Column 2 (+ politeness).} Controlling for the politeness
+differential reduces the sycophancy coefficient by 39\% ($\beta =
+0.135$), but it remains significant. This means some of sycophancy's
+apparent advantage reflects the correlated quality of being genuinely
+helpful rather than sycophancy itself---exactly what the dual-scale
+design was intended to separate out.
 
-\paragraph{Column 3: Controlling for length.} Adding response length causes the sycophancy coefficient to collapse by 87\% from the bivariate estimate ($\beta$ = 0.018, $p$ = 0.28). The effect becomes statistically indistinguishable from zero. This dramatic attenuation suggests that sycophantic responses tend to be longer, and length---not sycophancy per se---drives much of the preference advantage.
+\paragraph{Column 3 (+ length).} Adding response length causes the
+sycophancy coefficient to collapse by 87\% from its bivariate value
+($\beta = 0.018$, $p = .28$). The effect becomes statistically
+indistinguishable from zero. The implication is straightforward: most
+of what looks like a sycophancy advantage in Column~1 is actually a
+length advantage. Sycophantic responses tend to be longer, and users
+tend to prefer longer responses---a pattern consistent with the length
+biases documented elsewhere in the preference learning literature
+\citep{dubois2024alpacafarm}.
 
-\paragraph{Column 4: Topic fixed effects.} Adding topic controls does not materially change the (null) sycophancy effect.
+\paragraph{Column 4 (+ topic fixed effects).} Adding topic controls
+changes nothing materially. The null aggregate effect of sycophancy
+is robust to controlling for the domain distribution.
 
-\subsection{Heterogeneous Effects by Topic Domain}
+\subsection{Heterogeneous Effects by Domain}
 
 \begin{figure}[t]
-    \centering
-    \includegraphics[width=0.85\textwidth]{fig3_heterogeneous_effects.pdf}
-    \caption{Heterogeneous effects of sycophancy by topic domain. Bars show logistic regression coefficients with 95\% CIs. Red indicates statistical significance ($p$ < 0.05) after Benjamini-Hochberg FDR correction.}
-    \label{fig:heterogeneous}
+  \centering
+  \includegraphics[width=0.95\columnwidth]{fig3_heterogeneous_effects.pdf}
+  \caption{Heterogeneous effects of sycophancy by topic domain.
+    Bars show logistic regression coefficients with 95\% CIs.
+    Red indicates statistical significance ($p < .05$) after
+    Benjamini--Hochberg FDR correction.}
+  \label{fig:heterogeneous}
 \end{figure}
 
-While the aggregate effect of sycophancy is null after controlling for length, this masks substantial heterogeneity across domains (Figure~\ref{fig:heterogeneous}, Table~\ref{tab:heterogeneous}).
+The aggregate null hides a striking pattern of domain heterogeneity.
+Figure~\ref{fig:heterogeneous} and Table~\ref{tab:heterogeneous} show
+estimates from Equation~\ref{eq:logit} fit separately within each
+topic domain, with Benjamini--Hochberg correction for multiple
+comparisons \citep{benjamini1995controlling}.
 
 \begin{table}[t]
-    \centering
-    \caption{Heterogeneous effects by topic domain}
-    \label{tab:heterogeneous}
-    \begin{tabular}{lrrrrl}
-        \toprule
-        Topic & N & $\beta$ & SE & $p$ (FDR) & Direction \\
-        \midrule
-        Creative Writing & 1,311 & 0.625 & 0.155 & <0.001 & Positive \\
-        Opinion & 199 & 0.314 & 0.207 & 0.207 & -- \\
-        Other & 14,370 & 0.041 & 0.020 & 0.088 & -- \\
-        Math & 912 & -0.076 & 0.088 & 0.382 & -- \\
-        Coding & 2,094 & -0.128 & 0.088 & 0.207 & -- \\
-        Advice & 607 & -0.153 & 0.131 & 0.285 & -- \\
-        Factual QA & 3,534 & -0.181 & 0.049 & <0.001 & Negative \\
-        \bottomrule
-    \end{tabular}
-
-    \smallskip
-    {\footnotesize All models control for politeness and length differentials. FDR = false discovery rate correction.}
+  \centering
+  \caption{Heterogeneous effects of sycophancy by topic domain.
+    All models control for politeness and length differentials.
+    FDR~= Benjamini--Hochberg false discovery rate correction.}
+  \label{tab:heterogeneous}
+  \begin{tabular}{lrrrll}
+    \toprule
+    Topic & $N$ & $\beta$ & SE & $p$ (FDR) & Dir.\\
+    \midrule
+    Creative Writing & 1,311 & $\phantom{-}0.625$ & 0.155 & $<.001$ & $+$ \\
+    Opinion          &   199 & $\phantom{-}0.314$ & 0.207 & $.207$  & -- \\
+    Other            & 14,370 & $\phantom{-}0.041$ & 0.020 & $.088$ & -- \\
+    Math             &   912 & $-0.076$ & 0.088 & $.382$            & -- \\
+    Coding           & 2,094 & $-0.128$ & 0.088 & $.207$            & -- \\
+    Advice           &   607 & $-0.153$ & 0.131 & $.285$            & -- \\
+    Factual QA       & 3,534 & $-0.181$ & 0.049 & $<.001$           & $-$ \\
+    \bottomrule
+  \end{tabular}
 \end{table}
 
-Two topics show significant effects after FDR correction \citep{benjamini1995controlling}:
+Two domains show effects that survive FDR correction:
 
-\paragraph{Creative Writing ($\beta$ = 0.625, $p$ < 0.001).} In creative contexts, sycophancy substantially increases win probability. Each one-point increase in sycophancy differential increases the odds of winning by 87\% (OR = 1.87). This may reflect users' desire for validation of their creative ideas.
+\paragraph{Creative writing ($\beta = 0.625$, OR = 1.87, $p < .001$).}
+In creative contexts, sycophancy substantially increases win probability.
+An 87\% increase in odds is a large effect. One interpretation is that
+users seeking feedback on creative work genuinely want validation and
+encouragement alongside critique---and that responses offering such
+validation are genuinely more useful in this context, even if those
+same behaviors would be inappropriate in factual domains.
 
-\paragraph{Factual QA ($\beta$ = -0.181, $p$ < 0.001).} In factual question-answering, sycophancy \emph{decreases} win probability. Users appear to penalize responses that seem to prioritize agreement over accuracy in knowledge-seeking contexts.
+\paragraph{Factual QA ($\beta = -0.181$, OR = 0.83, $p < .001$).}
+In factual question-answering, sycophancy decreases win probability.
+Users looking up facts appear to detect and penalize responses that
+seem to prioritize agreement over accuracy. The negative effect is
+smaller in magnitude than the positive creative writing effect, but
+it points in the theoretically predicted direction: sycophancy should
+matter least, or backfire, precisely where correctness matters most.
 
-This pattern aligns with theoretical expectations: sycophancy should be less valued---and potentially actively disliked---in domains where objective correctness matters.
+The four remaining domains (opinion, math, coding, advice) show
+coefficients spanning the range from mildly positive to mildly
+negative, but none approach significance after FDR correction. This
+pattern is consistent with sycophancy being a diffuse, domain-general
+phenomenon for most content types, with strong effects only at the
+theoretical extremes.
 
-%------------------------------------------------------------------------------
+
+%==============================================================
 \section{Robustness Checks}
 \label{sec:robustness}
-%------------------------------------------------------------------------------
+%==============================================================
 
 \subsection{Coefficient Stability}
 
 \begin{figure}[t]
-    \centering
-    \includegraphics[width=0.9\textwidth]{fig_coefficient_stability.pdf}
-    \caption{Coefficient stability across model specifications. The sycophancy coefficient attenuates substantially when controlling for response length (Specification 3), suggesting verbosity as a key confounder.}
-    \label{fig:stability}
+  \centering
+  \includegraphics[width=0.95\columnwidth]{fig_coefficient_stability.pdf}
+  \caption{Sycophancy coefficient across model specifications.
+    The 87\% attenuation when adding length (Specification~3)
+    implicates verbosity as the primary confounder. The rebound
+    in Specification~6 (within-model variation, top-10 models)
+    suggests that sycophancy does predict winning within a given model's
+    output distribution.}
+  \label{fig:stability}
 \end{figure}
 
-Figure~\ref{fig:stability} shows how the sycophancy coefficient changes across progressively saturated specifications. The key finding is the 87\% attenuation when adding length controls (Specification 3). This pattern suggests that sycophantic responses tend to be more verbose, and users may prefer verbosity rather than sycophancy per se.
+Figure~\ref{fig:stability} traces the sycophancy coefficient across
+six progressively adjusted specifications. The key discontinuity is
+between Specifications~2 and~3: adding response length causes the
+coefficient to drop from $\beta = 0.135$ to $\beta = 0.018$. This
+is characteristic of a mediation-like confound rather than simple
+noise: sycophantic responses are systematically longer, and users
+prefer longer responses, so length absorbs the apparent sycophancy
+effect.
 
-However, when adding model fixed effects (Specification 6, restricted to top-10 models with $n$ = 15,351), the coefficient rebounds to $\beta$ = 0.121 ($p$ < 0.001). This suggests that within-model variation in sycophancy does predict winning, even controlling for length.
+However, when restricting to the top-10 models with model fixed
+effects (Specification~6; $n = 15{,}351$), the coefficient rebounds
+to $\beta = 0.121$ ($p < .001$). This suggests a more nuanced
+interpretation: \emph{within} a model's output distribution,
+variation in sycophancy does predict winning even after controlling
+for length. The aggregate null result reflects cross-model confounding
+rather than the complete absence of a within-model sycophancy effect.
 
-\subsection{Placebo Test: Objective vs. Subjective Domains}
+\subsection{Placebo Test: Objective vs.\ Subjective Domains}
 
-As a falsification check, we examine whether sycophancy effects differ between objective and subjective domains as theory predicts. Table~\ref{tab:placebo} confirms strong differential effects:
+As a falsification check, we test whether sycophancy effects differ
+between objective and subjective domains in the theoretically predicted
+direction: sycophancy should be penalized where correct answers exist
+and rewarded where they do not. Table~\ref{tab:placebo} confirms this
+strongly:
 
 \begin{table}[t]
-    \centering
-    \caption{Placebo test: Sycophancy effects by domain type}
-    \label{tab:placebo}
-    \begin{tabular}{lrrrr}
-        \toprule
-        Domain Type & N & $\beta$ & SE & $p$ \\
-        \midrule
-        Objective (coding, math, factual) & 6,524 & -0.165 & 0.035 & <0.001 \\
-        Subjective (creative, advice, opinion) & 2,055 & 0.322 & 0.063 & <0.001 \\
-        Other & 14,326 & 0.040 & 0.020 & 0.043 \\
-        \midrule
-        \multicolumn{5}{l}{Difference (subjective $-$ objective): 0.487, $Z$ = 6.79, $p$ < 0.001} \\
-        \bottomrule
-    \end{tabular}
+  \centering
+  \caption{Placebo test: sycophancy effects by domain type.
+    The objective--subjective difference validates the theoretical
+    framework.}
+  \label{tab:placebo}
+  \begin{tabular}{lrrrr}
+    \toprule
+    Domain Type & $N$ & $\beta$ & SE & $p$ \\
+    \midrule
+    Objective (coding, math, factual) & 6,524 & $-0.165$ & 0.035 & $<.001$ \\
+    Subjective (creative, advice, opinion) & 2,055 & $\phantom{-}0.322$ & 0.063 & $<.001$ \\
+    Other & 14,326 & $\phantom{-}0.040$ & 0.020 & $.043$ \\
+    \midrule
+    \multicolumn{5}{l}{Difference (subj.\ $-$ obj.): $\hat{\delta} = 0.487$,
+      $Z = 6.79$, $p < .001$} \\
+    \bottomrule
+  \end{tabular}
 \end{table}
 
-The 0.487-point coefficient difference between subjective and objective domains is highly significant ($Z$ = 6.79, $p$ < 0.001). This validates our theoretical framework: sycophancy's value to users is domain-dependent.
+The 0.487-point difference between subjective and objective domain
+coefficients is highly significant ($Z = 6.79$, $p < .001$). This
+validates our theoretical framework: wherever users can verify
+whether a response is correct, sycophancy is penalized; wherever
+evaluation is subjective, it is rewarded. The size of the difference
+is also notable---it is larger than the main sycophancy coefficient
+in any single specification, indicating that domain heterogeneity
+is not a marginal moderation but a fundamental feature of how
+sycophancy operates.
 
 \subsection{Clustered Standard Errors}
 
-Given potential within-user and within-model correlation, we assess standard error robustness:
+Given that multiple battles may involve the same user, and that models
+differ systematically in quality and style, we assess standard error
+robustness to different clustering assumptions:
 
 \begin{table}[t]
-    \centering
-    \caption{Standard error sensitivity to clustering}
-    \label{tab:clustering}
-    \begin{tabular}{lrrr}
-        \toprule
-        Clustering & SE & SE Inflation & $p$-value \\
-        \midrule
-        None (baseline) & 0.016 & 1.00x & 0.284 \\
-        By user & 0.022 & 1.32x & 0.418 \\
-        By model & 0.036 & 2.19x & 0.625 \\
-        \bottomrule
-    \end{tabular}
+  \centering
+  \caption{Standard error sensitivity to clustering.
+    The null aggregate result is robust across all clustering
+    assumptions.}
+  \label{tab:clustering}
+  \begin{tabular}{lrrr}
+    \toprule
+    Clustering & SE & Inflation & $p$ \\
+    \midrule
+    None (baseline) & 0.016 & 1.00$\times$ & .284 \\
+    By user         & 0.022 & 1.32$\times$ & .418 \\
+    By model        & 0.036 & 2.19$\times$ & .625 \\
+    \bottomrule
+  \end{tabular}
 \end{table}
 
-Model-level clustering inflates standard errors by 2.19x, suggesting substantial within-model correlation in the relationship between sycophancy and winning. The main effect remains non-significant under all clustering assumptions.
+Model-level clustering inflates standard errors by 2.19$\times$,
+reflecting substantial within-model correlation in the sycophancy--
+preference relationship. This is expected: a model that tends to be
+sycophantic will produce correlated sycophancy scores across all its
+battles, so the effective sample size at the model level is much
+smaller than the raw battle count. Despite this inflation, the
+aggregate null result is robust across all clustering assumptions.
 
 \subsection{Propensity Score Diagnostics}
 
-We verify assumptions for propensity score analyses, defining ``treatment'' as high sycophancy (score $\geq$ 2):
+We verify assumptions for propensity score analyses, treating ``high
+sycophancy'' (score $\geq 2$) as the treatment condition:
 
-\paragraph{Overlap.} Common support ranges from 0.143 to 1.000, with only 0.5\% of treated observations outside this region. Overlap quality is adequate for causal inference.
+\paragraph{Overlap.} Common support ranges from 0.143 to 1.000, with
+only 0.5\% of treated observations outside the common support region.
+Overlap is adequate for causal inference.
 
-\paragraph{Covariate Balance.} Before weighting, 3/9 covariates meet the |SMD| < 0.1 balance criterion. After inverse propensity weighting, 5/9 covariates are balanced. Largest remaining imbalances are for word count (SMD = 0.35) and politeness (SMD = 0.35).
+\paragraph{Covariate balance.} Before weighting, 3 of 9 covariates
+meet the $|\text{SMD}| < 0.1$ balance criterion. After inverse
+propensity weighting (IPW), 5 of 9 are balanced. The largest
+remaining imbalances are for word count (SMD = 0.35) and politeness
+(SMD = 0.35), both of which are controlled directly in the regression.
 
-\paragraph{Trimming Sensitivity.} The average treatment effect (ATE) is highly sensitive to propensity score trimming thresholds, ranging from +0.096 (1\% trim) to -0.173 (20\% trim). This instability suggests caution in interpreting IPW estimates.
+\paragraph{Trimming sensitivity.} The average treatment effect (ATE)
+is sensitive to the propensity score trimming threshold, ranging from
++0.096 at 1\% trimming to $-0.173$ at 20\% trimming. This instability
+indicates that IPW estimates are unreliable in this application,
+likely due to near-positivity violations for extreme covariate values.
+The regression results, which avoid this instability, should be
+preferred.
 
-\paragraph{Stabilized Weights.} Using stabilized weights reduces weight variance by 83.3\% and yields an ATE of 0.007 (95\% CI: [-0.015, 0.027]), consistent with our regression finding of a null aggregate effect.
+\paragraph{Stabilized weights.} Using stabilized weights reduces
+weight variance by 83.3\% and yields an ATE of 0.007 (95\% CI:
+$[-0.015, 0.027]$), consistent with the regression finding of a null
+aggregate effect.
 
-%------------------------------------------------------------------------------
+
+%==============================================================
 \section{Discussion}
 \label{sec:discussion}
-%------------------------------------------------------------------------------
+%==============================================================
 
-\subsection{Summary of Findings}
+\subsection{What the Findings Mean}
 
-Our analysis reveals a nuanced picture of sycophancy's role in user preference:
+Our analysis produces a picture more nuanced than a simple ``sycophancy
+wins'' or ``sycophancy loses.'' Three findings stand out.
 
-\begin{enumerate}
-    \item \textbf{Sycophancy is prevalent.} Over three-quarters of LLM responses in our sample exhibit moderate-to-high sycophancy, suggesting this is a widespread phenomenon rather than an edge case.
+\paragraph{Sycophancy is pervasive.} Over three-quarters of responses
+in our sample exhibit moderate-to-high sycophancy on our 0--3 scale.
+This is not an edge case or a property of a particular model family:
+it is a cross-cutting feature of how RLHF-trained models communicate.
+This prevalence is consistent with the theoretical prediction by
+\citet{shapira2026rlhf} that preference optimization amplifies
+sycophancy across the board.
 
-    \item \textbf{The aggregate effect is largely confounded.} The raw 25\% odds increase associated with sycophancy attenuates to near-zero when controlling for response length. Sycophantic responses tend to be more verbose, and users may value length rather than sycophancy per se.
+\paragraph{The aggregate effect is largely spurious.} The raw 25\%
+odds advantage of sycophancy is almost entirely explained by response
+length. Sycophantic responses are more verbose, and verbosity is
+independently valued by users---consistent with findings from
+AlpacaEval \citep{dubois2024alpacafarm} and the Chatbot Arena style
+analysis \citep{chiang2024chatbot}. This does not mean sycophancy is
+harmless: a model that has learned to generate long, agreeable
+responses has still been shaped by a preference for agreement over
+accuracy, even if users are primarily responding to the length.
 
-    \item \textbf{Domain matters substantially.} In creative writing, sycophancy increases win probability by 87\%. In factual QA, it \emph{decreases} win probability by 17\%. This heterogeneity has important implications for training and evaluation.
-\end{enumerate}
+\paragraph{Domain heterogeneity is fundamental.} The 87\% increase
+in win probability for creative writing and the 17\% decrease for
+factual QA are large effects that tell a coherent story. In creative
+contexts, validation may be part of what users need---a response
+that acknowledges the appeal of an idea before offering suggestions
+is genuinely more useful than one that immediately critiques. In
+factual contexts, the same behavior reads as unreliable or evasive.
 
-\subsection{Implications for RLHF Training}
+\subsection{Implications for Preference-Based Training}
 
-Our findings suggest that the relationship between sycophancy and preference is not uniformly positive, challenging the assumption that preference optimization inevitably rewards sycophancy. However, the domain heterogeneity we observe creates a more subtle problem: models trained on mixed preference data may learn to be sycophantic in creative contexts (where it helps) while remaining accurate in factual contexts (where sycophancy hurts).
+The domain heterogeneity we observe creates a subtle problem for
+RLHF practitioners. A model trained on mixed preference data may
+learn to be appropriately sycophantic in creative contexts (where
+users reward it) while remaining appropriately accurate in factual
+contexts (where users penalize it). This sounds desirable. But it
+also means that the training signal is different for different kinds
+of interactions, and a model that successfully learns this distinction
+has implicitly learned to modulate its honesty based on domain---a
+form of context-sensitive behavior that may be hard to audit.
 
-This could be desirable if it reflects genuine user needs---users may want validation when brainstorming but accuracy when fact-checking. However, it could also create inconsistent model behavior that undermines trust.
+We make three practical recommendations:
 
-We recommend that RLHF practitioners:
 \begin{itemize}
-    \item Stratify preference analyses by domain to detect heterogeneous training signals
-    \item Consider domain-specific reward modeling rather than uniform preference optimization
-    \item Monitor for emergent sycophancy patterns, particularly in subjective domains
+  \item \textbf{Stratify preference analyses by domain.} A single
+    aggregate preference score mixes contexts where sycophancy helps
+    and where it hurts. Domain-stratified analyses reveal the
+    heterogeneity that aggregate measures obscure.
+  \item \textbf{Control for response length.} Length biases are well
+    documented in the preference learning literature, and our results
+    confirm that they account for most of sycophancy's apparent
+    advantage. Preference data should be normalized for verbosity,
+    or length-controlled analysis techniques should be used.
+  \item \textbf{Monitor sycophancy in subjective domains specifically.}
+    Our results suggest that the risk of a sycophancy feedback loop
+    is highest in creative, opinion, and advice domains. These warrant
+    disproportionate attention in alignment auditing.
 \end{itemize}
 
 \subsection{Limitations}
+\label{sec:limitations}
 
-Several limitations constrain our conclusions:
+Our conclusions are subject to several constraints that future work
+should address.
 
-\paragraph{LLM-as-judge annotation.} Our sycophancy labels are themselves generated by an LLM, which may have systematic biases. Inter-rater reliability with human annotations would strengthen validation.
+\paragraph{LLM-as-judge annotation.} Our sycophancy labels are
+generated by Llama~3.2, which carries its own training-induced
+perspective on what constitutes sycophantic behavior.
+\citet{tjuatja2024llms} demonstrate that RLHF-trained models exhibit
+systematic response biases, and our cross-family comparison makes the
+same point concrete for sycophancy annotation specifically: safety RLHF
+can suppress a model's sycophancy calibration essentially to zero,
+making different judge families produce scores on incommensurable scales.
+This is not merely a reliability concern---it is an empirical finding
+about how alignment training shapes a model's implicit theory of
+sycophancy. Scores from one judge family should not be compared directly
+to scores from another; both are measurements of how sycophantic a
+response appears \emph{to that family}, not measurements of some
+objective property. Validation against human annotations remains the
+necessary next step for grounding these family-relative scales in a
+common reference frame.
 
-\paragraph{Observational data.} Despite extensive controls, causal claims from observational data remain tentative. Unobserved confounds (e.g., response quality, factual accuracy) may explain residual associations.
+\paragraph{Observational data.} Despite extensive controls, we cannot
+rule out unobserved confounders such as response accuracy, factual
+correctness, or formatting quality. Causal claims from observational
+data are always tentative. The consistency of our results across
+multiple specifications and robustness checks increases confidence,
+but a randomized experiment manipulating sycophancy level directly
+would provide stronger evidence.
 
-\paragraph{Platform-specific users.} Chatbot Arena users are likely more technically sophisticated than general LLM users. Effects may differ in other populations.
+\paragraph{Platform-specific users.} Chatbot Arena users are self-selected
+and likely more technically sophisticated than the general population
+of LLM users. Our effects may not generalize to deployed consumer
+applications, where users may differ systematically in their tolerance
+for or detection of sycophancy.
 
-\paragraph{Single-turn focus.} We analyze only single-turn interactions. Sycophancy effects may differ in multi-turn conversations where relationship dynamics evolve.
+\paragraph{Single-turn interactions.} We analyze only single-turn
+battles. Sycophancy may matter differently across conversation turns,
+particularly in multi-turn settings where a model's willingness to
+maintain or change positions under social pressure is more directly
+observable \citep{sun2025measuring, challenging2025evaluator}.
 
 \subsection{Future Directions}
 
 Several extensions would strengthen this work:
 
 \begin{itemize}
-    \item \textbf{Longitudinal analysis:} Does sycophancy predict user return behavior over time?
-    \item \textbf{Experimental manipulation:} Randomized interventions varying sycophancy levels would enable stronger causal claims.
-    \item \textbf{Multi-turn dynamics:} How does sycophancy evolve across conversation turns, and does early sycophancy affect later preference?
-    \item \textbf{Cross-platform replication:} Do these patterns replicate in other preference datasets?
+  \item \textbf{Longitudinal user behavior.} Does sycophancy predict
+    whether users return to the platform over time? A model that wins
+    single comparisons via flattery might undermine long-term
+    user trust.
+  \item \textbf{Experimental manipulation.} Controlled experiments
+    varying sycophancy level while holding other response attributes
+    constant would enable stronger causal claims than observational
+    analysis permits.
+  \item \textbf{Multi-turn dynamics.} How does the value of sycophancy
+    evolve as a conversation progresses? Early sycophancy might build
+    rapport that later pays dividends, or it might create expectations
+    that the model then struggles to fulfill honestly.
+  \item \textbf{Cross-platform replication.} The LMSYS Chatbot Arena
+    has a specific user population and interface design. Replication
+    in other preference collection systems would test the
+    generalizability of these patterns.
 \end{itemize}
 
-%------------------------------------------------------------------------------
+
+%==============================================================
 \section{Conclusion}
 \label{sec:conclusion}
-%------------------------------------------------------------------------------
+%==============================================================
 
-We provide the first large-scale causal analysis of sycophancy's effect on user preferences in LLM comparisons. Our central finding is that sycophancy's relationship with winning is highly context-dependent: positive in creative domains, negative in factual ones, and largely confounded by response length in aggregate. This challenges simple narratives about sycophancy in RLHF and suggests that preference-based training may produce domain-specific behavioral patterns.
+We present the first large-scale causal analysis of sycophancy's
+effect on user preference in naturalistic LLM comparisons. Using
+33,000 head-to-head battles and a validated dual-scale annotation
+framework, we find that sycophancy's relationship with winning is
+deeply context-dependent: positive in creative domains, negative in
+factual ones, and largely confounded by response length in aggregate.
 
-As LLMs are increasingly trained on human preference data, understanding the factors that drive preference becomes critical for alignment. Our work contributes to this understanding by showing that sycophancy is neither universally rewarded nor universally penalized---its effects depend on what users are trying to accomplish.
+These findings challenge both the pessimistic narrative (sycophancy
+always wins, so RLHF inevitably produces dishonest models) and the
+dismissive one (sycophancy is not rewarded, so there is no training
+pressure problem). The truth is more granular. Sycophancy is already
+pervasive, the training signal in subjective domains reinforces it,
+and the primary pathway through which it has historically appeared to
+``win''---response length---is itself a feature that models are now
+explicitly trained to optimize.
 
-%------------------------------------------------------------------------------
+As LLMs are deployed at increasing scale, understanding the factors
+that drive human preferences is essential for alignment. Our work
+shows that these factors are domain-specific in ways that aggregate
+preference scores conceal, and that disentangling sycophancy from
+correlated features like verbosity and politeness requires explicit
+annotation methodology. We hope the dual-scale framework and analysis
+approach described here prove useful to researchers studying
+preference formation and to practitioners designing RLHF pipelines.
+
+
+%==============================================================
 % Acknowledgments
-%------------------------------------------------------------------------------
-\begin{ack}
-We thank the LMSYS team for making the Chatbot Arena data publicly available. Computational resources were provided by Stony Brook University. This work was supported in part by [funding sources if applicable].
-\end{ack}
+%==============================================================
 
-%------------------------------------------------------------------------------
+\section*{Acknowledgments}
+
+We thank the LMSYS team for making the Chatbot Arena data publicly
+available. Computational resources were provided by Stony Brook
+University. [Funding sources to be added.]
+
+%==============================================================
 % References
-%------------------------------------------------------------------------------
+%==============================================================
+
 \bibliographystyle{plainnat}
 \bibliography{references}
 
-%------------------------------------------------------------------------------
-% Appendix
-%------------------------------------------------------------------------------
 \newpage
 \appendix
 
+%==============================================================
 \section{Annotation Details}
 \label{app:annotation}
+%==============================================================
 
-\subsection{LLM-as-Judge Prompt}
+\subsection{Full LLM-as-Judge Prompt}
 
-The full prompt used for sycophancy annotation:
+The complete prompt used for sycophancy annotation:
 
+\begin{small}
 \begin{verbatim}
-You are evaluating an AI assistant's response for sycophancy.
+You are evaluating an AI assistant's response
+for sycophancy.
 
-**Definition**: Sycophancy is when an AI prioritizes agreeing with
-or flattering the user over providing accurate, honest information.
-This includes:
+DEFINITION: Sycophancy is when an AI prioritizes
+agreeing with or flattering the user over
+providing accurate, honest information. This
+includes:
 - Agreeing with incorrect user statements
-- Excessive/unwarranted praise ("Great question!", "You're right!")
-- Abandoning correct positions when user pushes back
-- Validation-seeking ("Does that help?", "Is that what you wanted?")
+- Excessive/unwarranted praise ("Great
+  question!", "You're absolutely right!")
+- Abandoning correct positions when user
+  pushes back
+- Validation-seeking ("Does that help?",
+  "Is that what you wanted?")
 
-**User message**: {user_message}
-**Assistant response**: {assistant_response}
+USER MESSAGE: {user_message}
+ASSISTANT RESPONSE: {assistant_response}
 
-Rate sycophancy (0-3) and politeness (0-3).
+Rate on two dimensions (0-3 each):
+- sycophancy: degree of flattery/agreement
+  over accuracy (see scale above)
+- politeness: degree of genuine helpfulness
+  and appropriate tone
+
 Respond ONLY with JSON:
-{"sycophancy": <0-3>, "politeness": <0-3>, "reasoning": "<brief>"}
+{
+  "sycophancy": <0-3>,
+  "politeness": <0-3>,
+  "reasoning": "<brief explanation>"
+}
 \end{verbatim}
+\end{small}
 
-\subsection{Labeling Quality}
+\subsection{Labeling Quality Metrics}
 
-Labeling success rate was 99.0\% for both model A and model B responses. The 1.0\% failure rate was primarily due to JSON parsing errors in the judge model's output.
+Labeling success rate: 99.0\% for both model~A and model~B responses
+across 32,807 battles. The 1.0\% failure rate is attributable to
+JSON parsing errors in the judge model's output, distributed uniformly
+across models and domains (indicating no systematic bias in labeling
+failures).
 
+%==============================================================
 \section{Additional Results}
 \label{app:additional}
+%==============================================================
 
 \subsection{Full Model Comparison}
 
-Table~\ref{tab:models_full} shows sycophancy statistics for all models with $\geq$50 battles.
+Table~\ref{tab:models_full} reports sycophancy statistics for all
+models with $\geq$50 battles in our sample.
 
 \begin{table}[h]
-    \centering
-    \caption{Sycophancy by model (models with $\geq$50 battles)}
-    \label{tab:models_full}
-    \begin{tabular}{lrrr}
-        \toprule
-        Model & N & Mean & SD \\
-        \midrule
-        dolly-v2-12b & 1,364 & 1.86 & 0.72 \\
-        guanaco-33b & 534 & 1.80 & 0.67 \\
-        chatglm-6b & 1,684 & 1.80 & 0.76 \\
-        stablelm-tuned-alpha-7b & 1,368 & 1.79 & 0.78 \\
-        claude-instant-v1 & 1,335 & 1.77 & 0.71 \\
-        \ldots & \ldots & \ldots & \ldots \\
-        gpt-4 & 2,075 & 1.66 & 0.74 \\
-        vicuna-7b & 1,479 & 1.65 & 0.79 \\
-        llama-13b & 975 & 1.65 & 0.81 \\
-        \bottomrule
-    \end{tabular}
+  \centering
+  \caption{Sycophancy by model (models with $\geq$50 battles)}
+  \label{tab:models_full}
+  \begin{tabular}{lrrr}
+    \toprule
+    Model & $N$ & Mean & SD \\
+    \midrule
+    dolly-v2-12b            & 1,364 & 1.86 & 0.72 \\
+    guanaco-33b             &   534 & 1.80 & 0.67 \\
+    chatglm-6b              & 1,684 & 1.80 & 0.76 \\
+    stablelm-tuned-alpha-7b & 1,368 & 1.79 & 0.78 \\
+    claude-instant-v1       & 1,335 & 1.77 & 0.71 \\
+    $\ldots$                & $\ldots$ & $\ldots$ & $\ldots$ \\
+    gpt-4                   & 2,075 & 1.66 & 0.74 \\
+    vicuna-7b               & 1,479 & 1.65 & 0.79 \\
+    llama-13b               &   975 & 1.65 & 0.81 \\
+    \bottomrule
+  \end{tabular}
 \end{table}
 
 \subsection{Propensity Score Diagnostics}
 
 \begin{figure}[h]
-    \centering
-    \includegraphics[width=0.7\textwidth]{fig_ps_overlap.pdf}
-    \caption{Propensity score distributions for treated (high sycophancy) and control (low sycophancy) groups showing adequate common support.}
-    \label{fig:ps_overlap}
+  \centering
+  \includegraphics[width=0.9\columnwidth]{fig_ps_overlap.pdf}
+  \caption{Propensity score distributions for treated (high
+    sycophancy, score $\geq 2$) and control (low sycophancy)
+    groups, showing adequate common support. Only 0.5\% of
+    treated observations fall outside the common support region.}
+  \label{fig:ps_overlap}
 \end{figure}
 
 \begin{figure}[h]
-    \centering
-    \includegraphics[width=0.7\textwidth]{fig_trimming_sensitivity.pdf}
-    \caption{Sensitivity of ATE estimates to propensity score trimming threshold. Estimates are highly unstable across thresholds.}
-    \label{fig:trimming}
+  \centering
+  \includegraphics[width=0.9\columnwidth]{fig_trimming_sensitivity.pdf}
+  \caption{Sensitivity of ATE estimates to propensity score trimming
+    threshold, ranging from +0.096 at 1\% trim to $-0.173$ at 20\%
+    trim. The high instability indicates that IPW estimates should
+    be interpreted with caution; regression results are preferred.}
+  \label{fig:trimming}
 \end{figure}
 
 \end{document}

@@ -1,4 +1,4 @@
-.PHONY: install download process label analyze figures notebooks paper paper-clean test clean help
+.PHONY: install download process label label-irr validate validate-notebook analyze figures notebooks paper paper-clean test clean help
 
 # Default model for labeling
 MODEL ?= llama3.2:latest
@@ -15,6 +15,9 @@ help:
 	@echo "  make download       Download LMSYS dataset"
 	@echo "  make process        Process raw data into analysis-ready format"
 	@echo "  make label          Run sycophancy labeling (MODEL=llama3.2:8b BATCH_SIZE=100)"
+	@echo "  make label-irr      Label 500 samples with a second model for inter-rater reliability"
+	@echo "  make validate       Check labeling quality + IRR (fast, CLI-based)"
+	@echo "  make validate-notebook  Full validation notebook (slower)"
 	@echo "  make analyze        Run full analysis pipeline (CLI + all notebooks)"
 	@echo "  make notebooks      Run all analysis notebooks in sequence"
 	@echo "  make figures        Generate publication figures"
@@ -42,6 +45,30 @@ label:
 
 label-resume:
 	python -m quant_syco label --model $(MODEL) --batch-size $(BATCH_SIZE) --resume
+
+# Label a small shared sample with a second model for inter-rater reliability
+# 500 battles is enough for a reliable kappa estimate (~20 min with gpt-oss:20b)
+IRR_MODEL ?= gpt-oss:20b
+IRR_SAMPLE ?= 500
+
+label-irr:
+	python -m quant_syco label --model $(IRR_MODEL) --sample $(IRR_SAMPLE) --batch-size 25
+	@echo "IRR labeling complete. Run 'make validate' to compute kappa."
+
+# Run validation: lexical convergence check + IRR (if multiple model labels present)
+validate:
+	python -m quant_syco validate
+	@echo ""
+	@echo "To run the full exploratory validation notebook (slower):"
+	@echo "  make validate-notebook"
+
+# Run the full validation notebook via nbconvert (can be slow)
+validate-notebook:
+	@echo "Running 02_labeling_validation..."
+	jupyter nbconvert --to notebook --execute --inplace \
+	  --ExecutePreprocessor.timeout=600 \
+	  $(NOTEBOOKS_DIR)/02_labeling_validation.ipynb
+	@echo "Validation notebook complete."
 
 analyze: analyze-cli notebooks
 	@echo "Full analysis complete! Check data/outputs/ and paper/figures/"
