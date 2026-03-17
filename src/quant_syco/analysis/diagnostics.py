@@ -382,3 +382,255 @@ def track_sample_exclusions(
         "retention_rate": n_final / n_raw if n_raw > 0 else 0,
         "pct_retained": 100 * n_final / n_raw if n_raw > 0 else 0,
     }
+
+
+# ---------------------------------------------------------------------------
+# Sensitivity analysis for unmeasured confounding
+# ---------------------------------------------------------------------------
+
+
+def compute_e_value(
+    estimate: float,
+    ci_bound: Optional[float] = None,
+    estimate_type: str = "OR",
+) -> dict:
+    """Compute the E-value for sensitivity to unmeasured confounding.
+
+    The E-value (VanderWeele & Ding, 2017) answers: how strong would an
+    unmeasured confounder need to be, in terms of its association with both
+    treatment and outcome, to fully explain away the observed effect?
+
+    A large E-value means the effect is robust; a small E-value means a
+    modest confounder could explain it away.
+
+    Args:
+        estimate: Point estimate (odds ratio or risk ratio).
+        ci_bound: The CI bound closest to the null (1.0). If provided,
+            computes the E-value for the CI bound as well.
+        estimate_type: "OR" for odds ratio, "RR" for risk ratio, or
+            "beta" for log-odds coefficient (will be exponentiated).
+
+    Returns:
+        Dict with E-value for point estimate and CI bound.
+    """
+    if estimate_type == "beta":
+        estimate = np.exp(estimate)
+        if ci_bound is not None:
+            ci_bound = np.exp(ci_bound)
+        estimate_type = "OR"
+
+    # For rare outcomes, OR ≈ RR. For common outcomes, convert using
+    # the square-root approximation: RR_approx ≈ sqrt(OR) when prevalence
+    # is moderate. We use the OR directly with the standard formula,
+    # which is conservative (the true E-value may be larger).
+    rr = estimate
+
+    def _e_value(rr_val: float) -> float:
+        """E-value formula for a risk/odds ratio."""
+        if rr_val < 1:
+            rr_val = 1 / rr_val
+        return rr_val + np.sqrt(rr_val * (rr_val - 1))
+
+    e_point = _e_value(rr)
+
+    result = {
+        "estimate": estimate,
+        "estimate_type": estimate_type,
+        "e_value_point": e_point,
+        "interpretation": (
+            f"An unmeasured confounder would need to be associated with both "
+            f"treatment and outcome by a factor of {e_point:.2f} each "
+            f"(beyond measured covariates) to explain away the observed effect."
+        ),
+    }
+
+    if ci_bound is not None:
+        if ci_bound <= 1.0 and estimate > 1.0:
+            # CI crosses null — effect is not robust
+            result["e_value_ci"] = 1.0
+            result["ci_interpretation"] = (
+                "The confidence interval includes the null; E-value for CI = 1.0."
+            )
+        elif ci_bound >= 1.0 and estimate < 1.0:
+            result["e_value_ci"] = 1.0
+            result["ci_interpretation"] = (
+                "The confidence interval includes the null; E-value for CI = 1.0."
+            )
+        else:
+            e_ci = _e_value(ci_bound)
+            result["e_value_ci"] = e_ci
+            result["ci_interpretation"] = (
+                f"To move the CI bound to the null requires a confounder "
+                f"associated by a factor of {e_ci:.2f} with both treatment "
+                f"and outcome."
+            )
+
+    return result
+
+
+def compute_e_values_table(
+    results: list[dict],
+) -> pd.DataFrame:
+    """Compute E-values for a set of regression results.
+
+    Args:
+        results: List of dicts, each with keys:
+            - label: description of the estimate
+            - or_estimate: odds ratio (or beta if log-odds)
+            - ci_lower: lower CI bound
+            - ci_upper: upper CI bound
+
+    Returns:
+        DataFrame with E-values for each estimate.
+    """
+    rows = []
+    for r in results:
+        or_est = r["or_estimate"]
+        ci_lower = r.get("ci_lower")
+        ci_upper = r.get("ci_upper")
+
+        # The CI bound closest to 1.0
+        if or_est >= 1.0:
+            ci_null = ci_lower
+        else:
+            ci_null = ci_upper
+
+        e = compute_e_value(or_est, ci_null, estimate_type="OR")
+
+        rows.append({
+            "label": r["label"],
+            "OR": or_est,
+            "CI_lower": ci_lower,
+            "CI_upper": ci_upper,
+            "E_value_point": e["e_value_point"],
+            "E_value_CI": e.get("e_value_ci", np.nan),
+        })
+
+    return pd.DataFrame(rows)
+
+
+def rosenbaum_sensitivity(
+    treatment: np.ndarray,
+    outcome: np.ndarray,
+    propensity_scores: np.ndarray,
+    gamma_range: Optional[list[float]] = None,
+    n_pairs: int = 500,
+    seed: int = 42,
+) -> pd.DataFrame:
+    """Rosenbaum sensitivity analysis for hidden bias.
+
+    Tests how robust the treatment-outcome association is to an unobserved
+    confounder that changes the odds of treatment assignment by a factor of
+    Gamma. Uses a matched-pair approach.
+
+    At Gamma = 1.0, there is no hidden bias and the p-value should be small
+    (confirming the observed effect). As Gamma increases, the p-value
+    increases; the critical Gamma at which the p-value crosses 0.05
+    indicates the study's sensitivity to hidden bias.
+
+    Args:
+        treatment: Binary treatment array (0/1).
+        outcome: Binary outcome array (0/1).
+        propensity_scores: Estimated propensity scores.
+        gamma_range: List of Gamma values to test.
+        n_pairs: Number of matched pairs to form.
+        seed: Random seed for matching.
+
+    Returns:
+        DataFrame with Gamma, p_upper, p_lower, and significance.
+    """
+    from scipy.stats import norm
+
+    if gamma_range is None:
+        gamma_range = [1.0, 1.25, 1.5, 1.75, 2.0, 2.5, 3.0]
+
+    rng = np.random.default_rng(seed)
+    treatment = np.asarray(treatment, dtype=int)
+    outcome = np.asarray(outcome, dtype=float)
+    ps = np.asarray(propensity_scores, dtype=float)
+
+    # --- Nearest-neighbor matching on propensity score ---
+    treated_idx = np.where(treatment == 1)[0]
+    control_idx = np.where(treatment == 0)[0]
+
+    if len(treated_idx) == 0 or len(control_idx) == 0:
+        return pd.DataFrame()
+
+    # Match each treated unit to nearest control (without replacement)
+    pairs = []
+    available_controls = set(control_idx.tolist())
+    control_ps = ps[control_idx]
+
+    for t_idx in rng.permutation(treated_idx):
+        if not available_controls or len(pairs) >= n_pairs:
+            break
+        avail = np.array(sorted(available_controls))
+        distances = np.abs(ps[t_idx] - ps[avail])
+        best = avail[np.argmin(distances)]
+        pairs.append((t_idx, best))
+        available_controls.discard(best)
+
+    if len(pairs) < 10:
+        return pd.DataFrame()
+
+    # Compute outcome differences within pairs
+    diffs = np.array([outcome[t] - outcome[c] for t, c in pairs])
+    n_matched = len(pairs)
+
+    results = []
+    for gamma in gamma_range:
+        # Under hidden bias Gamma, the probability that the treated unit
+        # has a higher outcome can range from 1/(1+Gamma) to Gamma/(1+Gamma)
+        p_plus = gamma / (1 + gamma)  # upper bound on P(treated has higher outcome)
+        p_minus = 1 / (1 + gamma)     # lower bound
+
+        # Number of concordant pairs (treated outcome > control outcome)
+        n_positive = np.sum(diffs > 0)
+        n_nonzero = np.sum(diffs != 0)
+
+        if n_nonzero == 0:
+            results.append({
+                "gamma": gamma,
+                "n_pairs": n_matched,
+                "p_upper": 1.0,
+                "p_lower": 1.0,
+                "significant_upper": False,
+            })
+            continue
+
+        # McNemar-style test statistic under Gamma
+        # Upper bound: assume hidden bias maximally inflates concordant pairs
+        expected_upper = n_nonzero * p_plus
+        var_upper = n_nonzero * p_plus * (1 - p_plus)
+        z_upper = (n_positive - expected_upper) / np.sqrt(var_upper) if var_upper > 0 else 0
+        p_upper = 1 - norm.cdf(z_upper)
+
+        # Lower bound: assume hidden bias maximally deflates concordant pairs
+        expected_lower = n_nonzero * p_minus
+        var_lower = n_nonzero * p_minus * (1 - p_minus)
+        z_lower = (n_positive - expected_lower) / np.sqrt(var_lower) if var_lower > 0 else 0
+        p_lower = 1 - norm.cdf(z_lower)
+
+        results.append({
+            "gamma": gamma,
+            "n_pairs": n_matched,
+            "n_concordant": int(n_positive),
+            "n_discordant": int(n_nonzero - n_positive),
+            "p_upper": p_upper,
+            "p_lower": p_lower,
+            "significant_upper": p_upper < 0.05,
+        })
+
+    df_results = pd.DataFrame(results)
+
+    # Find critical Gamma: the first Gamma where p_upper > 0.05
+    significant = df_results[df_results["significant_upper"]]
+    if len(significant) == len(df_results):
+        df_results.attrs["critical_gamma"] = f"> {gamma_range[-1]}"
+    elif len(significant) == 0:
+        df_results.attrs["critical_gamma"] = "< 1.0 (effect not significant)"
+    else:
+        last_sig = significant["gamma"].max()
+        df_results.attrs["critical_gamma"] = last_sig
+
+    return df_results

@@ -164,7 +164,7 @@ def compute_win_rate_by_sycophancy(
     results["win_rate"] = results["n_wins"] / results["n"]
     results["win_or_tie_rate"] = (results["n_wins"] + results["n_ties"]) / results["n"]
 
-    return results
+    return results  # noqa: RET504
 
 
 def compute_sycophancy_differential_effect(
@@ -214,3 +214,88 @@ def compute_sycophancy_differential_effect(
     )
 
     return results
+
+
+def test_power_user_sensitivity(
+    df: pd.DataFrame,
+    user_col: str = "user_id",
+    percentile: int = 95,
+    sycophancy_a_col: str = "sycophancy_a",
+    sycophancy_b_col: str = "sycophancy_b",
+) -> dict:
+    """Test whether main results change when excluding power users.
+
+    Reruns the core winner regression excluding the top N% of users by
+    battle count, to assess whether a small number of highly active
+    users drive the results.
+
+    Args:
+        df: Battle-level DataFrame with user IDs and scores.
+        user_col: Column identifying users.
+        percentile: Exclude users above this percentile of activity.
+        sycophancy_a_col: Sycophancy column for model A.
+        sycophancy_b_col: Sycophancy column for model B.
+
+    Returns:
+        Dict with full-sample and restricted-sample comparison.
+    """
+    from .causal import run_winner_regression
+
+    user_counts = df[user_col].value_counts()
+    threshold = np.percentile(user_counts.values, percentile)
+
+    power_users = user_counts[user_counts > threshold].index
+    n_power = len(power_users)
+    n_battles_power = df[df[user_col].isin(power_users)].shape[0]
+
+    result_full = run_winner_regression(
+        df,
+        sycophancy_a_col=sycophancy_a_col,
+        sycophancy_b_col=sycophancy_b_col,
+        include_length=True,
+        length_nonlinear=True,
+    )
+
+    df_restricted = df[~df[user_col].isin(power_users)]
+    result_restricted = run_winner_regression(
+        df_restricted,
+        sycophancy_a_col=sycophancy_a_col,
+        sycophancy_b_col=sycophancy_b_col,
+        include_length=True,
+        length_nonlinear=True,
+    )
+
+    return {
+        "user_characterization": {
+            "n_total_users": user_counts.shape[0],
+            "n_power_users": n_power,
+            "power_user_threshold": threshold,
+            "pct_power_users": 100 * n_power / user_counts.shape[0],
+            "battles_by_power_users": n_battles_power,
+            "pct_battles_by_power_users": 100 * n_battles_power / len(df),
+            "battles_per_user_median": user_counts.median(),
+            "battles_per_user_mean": user_counts.mean(),
+            "battles_per_user_max": user_counts.max(),
+        },
+        "full_sample": {
+            "n": result_full["n_obs"],
+            "syco_coef": result_full["syco_diff_coef"],
+            "syco_pval": result_full["syco_diff_pval"],
+            "syco_or": result_full["syco_diff_or"],
+        },
+        "restricted_sample": {
+            "n": result_restricted["n_obs"],
+            "syco_coef": result_restricted["syco_diff_coef"],
+            "syco_pval": result_restricted["syco_diff_pval"],
+            "syco_or": result_restricted["syco_diff_or"],
+        },
+        "coefficient_change": abs(
+            result_full["syco_diff_coef"] - result_restricted["syco_diff_coef"]
+        ),
+        "conclusion": (
+            "Stable" if abs(
+                result_full["syco_diff_coef"] - result_restricted["syco_diff_coef"]
+            ) < 0.05
+            else "Sensitive to power users"
+        ),
+    }

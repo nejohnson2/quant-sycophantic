@@ -1,11 +1,15 @@
 """Causal inference models for sycophancy effects."""
 
+import logging
+
 import numpy as np
 import pandas as pd
 import statsmodels.api as sm
 from scipy import stats
 from sklearn.linear_model import LogisticRegression
 from sklearn.preprocessing import StandardScaler
+
+logger = logging.getLogger(__name__)
 
 
 def compute_propensity_scores(
@@ -511,3 +515,204 @@ def run_coefficient_stability(
         pass
 
     return pd.DataFrame(specs)
+
+
+# ---------------------------------------------------------------------------
+# Formal mediation analysis (Imai, Keele & Tingley 2010)
+# ---------------------------------------------------------------------------
+
+
+def compute_mediation_decomposition(
+    df: pd.DataFrame,
+    treatment_col: str,
+    mediator_col: str,
+    outcome_col: str,
+    covariate_cols: list[str] = None,
+    n_bootstrap: int = 1000,
+    seed: int = 42,
+) -> dict:
+    """Causal mediation decomposition for binary outcomes.
+
+    Implements the potential-outcomes mediation framework of Imai, Keele &
+    Tingley (2010). Decomposes the total effect of treatment on outcome into:
+
+    - ACME (Average Causal Mediation Effect): the indirect pathway
+      through the mediator (e.g., sycophancy -> length -> win)
+    - ADE (Average Direct Effect): the effect NOT through the mediator
+      (e.g., sycophancy -> win, holding length constant)
+    - Proportion mediated: ACME / Total Effect
+
+    This replaces the informal "87% attenuation" language with formal
+    mediation quantities and bootstrap confidence intervals.
+
+    Args:
+        df: DataFrame with all required columns.
+        treatment_col: Continuous or binary treatment (e.g., syco_diff).
+        mediator_col: Mediator variable (e.g., length_diff).
+        outcome_col: Binary outcome (e.g., a_wins).
+        covariate_cols: Additional covariates to control for.
+        n_bootstrap: Number of bootstrap iterations for CIs.
+        seed: Random seed for reproducibility.
+
+    Returns:
+        Dict with ACME, ADE, total effect, proportion mediated, and CIs.
+    """
+    covariate_cols = covariate_cols or []
+    all_cols = [treatment_col, mediator_col, outcome_col] + covariate_cols
+    df_clean = df.dropna(subset=all_cols).copy()
+
+    if len(df_clean) < 100:
+        raise ValueError(f"Too few observations after dropping NAs: {len(df_clean)}")
+
+    rng = np.random.default_rng(seed)
+
+    def _estimate_mediation(data: pd.DataFrame) -> dict:
+        """Estimate mediation quantities on a single (possibly bootstrapped) sample."""
+        # Step 1: Mediator model (OLS) — M = a0 + a1*T + a2*X + e
+        X_med = data[[treatment_col] + covariate_cols].copy()
+        X_med = pd.get_dummies(X_med, drop_first=True, dtype=float)
+        X_med = sm.add_constant(X_med)
+        M = data[mediator_col]
+
+        try:
+            med_model = sm.OLS(M, X_med).fit(disp=0)
+        except Exception:
+            return None
+
+        # Step 2: Outcome model (Logit) — Y = b0 + b1*T + b2*M + b3*X + e
+        X_out = data[[treatment_col, mediator_col] + covariate_cols].copy()
+        X_out = pd.get_dummies(X_out, drop_first=True, dtype=float)
+        X_out = sm.add_constant(X_out)
+        Y = data[outcome_col]
+
+        try:
+            out_model = sm.Logit(Y, X_out).fit(disp=0, maxiter=100)
+        except Exception:
+            return None
+
+        # Step 3: Simulate potential mediator values under T=t and T=t'
+        # Using the approach from Imai et al. (2010):
+        # For each observation, predict M(t=1) and M(t=0)
+        n = len(data)
+
+        # Get treatment coefficient in mediator model
+        a_treatment = med_model.params.get(treatment_col, 0)
+        sigma_m = np.sqrt(med_model.mse_resid)
+
+        # Predicted mediator under T=actual and T=counterfactual
+        M_actual = med_model.predict(X_med)
+        # Counterfactual: shift mediator by -a_treatment * T_actual
+        # (what M would have been if T were 0 instead of actual)
+        M_counterfactual = M_actual - a_treatment * data[treatment_col].values
+
+        # Step 4: Compute potential outcomes
+        # Y(t=1, M(1)) - observed
+        # Y(t=1, M(0)) - counterfactual mediator
+        # Y(t=0, M(0)) - counterfactual treatment and mediator
+
+        # Create counterfactual design matrices
+        X_out_actual = X_out.copy()
+
+        X_out_counter_m = X_out.copy()
+        X_out_counter_m[mediator_col] = M_counterfactual
+
+        # Predicted probabilities
+        Y_t1_m1 = out_model.predict(X_out_actual)  # Y(t, M(t))
+
+        Y_t1_m0 = out_model.predict(X_out_counter_m)  # Y(t, M(t'))
+
+        # ACME = E[Y(t, M(1)) - Y(t, M(0))]
+        acme = np.mean(Y_t1_m1 - Y_t1_m0)
+
+        # ADE = E[Y(1, M(t')) - Y(0, M(t'))]
+        # We approximate by the coefficient difference
+        b_treatment = out_model.params.get(treatment_col, 0)
+        b_mediator = out_model.params.get(mediator_col, 0)
+
+        # Total effect (from model without mediator)
+        X_total = data[[treatment_col] + covariate_cols].copy()
+        X_total = pd.get_dummies(X_total, drop_first=True, dtype=float)
+        X_total = sm.add_constant(X_total)
+        try:
+            total_model = sm.Logit(Y, X_total).fit(disp=0, maxiter=100)
+            total_coef = total_model.params.get(treatment_col, 0)
+        except Exception:
+            total_coef = b_treatment + b_mediator * a_treatment
+
+        # Direct effect coefficient (from full model)
+        direct_coef = b_treatment
+
+        # Indirect via product of coefficients
+        indirect_coef = a_treatment * b_mediator
+
+        # Proportion mediated (on coefficient scale)
+        total = direct_coef + indirect_coef
+        prop_mediated = indirect_coef / total if abs(total) > 1e-10 else 0
+
+        return {
+            "acme": acme,
+            "ade_coef": direct_coef,
+            "indirect_coef": indirect_coef,
+            "total_coef": total_coef,
+            "direct_coef": direct_coef,
+            "prop_mediated": prop_mediated,
+            "a_path": a_treatment,  # treatment -> mediator
+            "b_path": b_mediator,   # mediator -> outcome (controlling T)
+            "c_prime": direct_coef, # direct effect of treatment
+            "c_total": total_coef,  # total effect of treatment
+        }
+
+    # Point estimate
+    point = _estimate_mediation(df_clean)
+    if point is None:
+        raise RuntimeError("Mediation estimation failed on full sample")
+
+    # Bootstrap CIs
+    n = len(df_clean)
+    boot_results = []
+    for _ in range(n_bootstrap):
+        idx = rng.choice(n, n, replace=True)
+        boot_data = df_clean.iloc[idx].reset_index(drop=True)
+        boot_est = _estimate_mediation(boot_data)
+        if boot_est is not None:
+            boot_results.append(boot_est)
+
+    if len(boot_results) < n_bootstrap * 0.5:
+        logger.warning(
+            "Only %d/%d bootstrap samples converged",
+            len(boot_results), n_bootstrap,
+        )
+
+    def _ci(key):
+        vals = [b[key] for b in boot_results if key in b]
+        if len(vals) < 10:
+            return (np.nan, np.nan)
+        return (np.percentile(vals, 2.5), np.percentile(vals, 97.5))
+
+    return {
+        # Mediation decomposition
+        "acme": point["acme"],
+        "acme_ci": _ci("acme"),
+        "ade_coef": point["ade_coef"],
+        "ade_ci": _ci("ade_coef"),
+        "total_coef": point["total_coef"],
+        "total_ci": _ci("total_coef"),
+        "prop_mediated": point["prop_mediated"],
+        "prop_mediated_ci": _ci("prop_mediated"),
+        # Path coefficients (for reporting)
+        "a_path": point["a_path"],          # T -> M
+        "a_path_ci": _ci("a_path"),
+        "b_path": point["b_path"],          # M -> Y | T
+        "b_path_ci": _ci("b_path"),
+        "c_prime": point["c_prime"],        # T -> Y | M (direct)
+        "c_prime_ci": _ci("c_prime"),
+        "c_total": point["c_total"],        # T -> Y (total)
+        "c_total_ci": _ci("c_total"),
+        # Metadata
+        "n_obs": len(df_clean),
+        "n_bootstrap": n_bootstrap,
+        "n_converged": len(boot_results),
+        "treatment": treatment_col,
+        "mediator": mediator_col,
+        "outcome": outcome_col,
+    }
